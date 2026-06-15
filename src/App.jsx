@@ -793,13 +793,13 @@ function App() {
             </button>
           </header>
 
-          <section className='mb-6 rounded-3xl bg-[#2f352b] p-6 text-white shadow-[0_24px_70px_rgba(48,53,43,0.22)] sm:p-8'>
+          <section className='mb-6 w-full max-w-full overflow-hidden rounded-3xl bg-[#2f352b] p-6 text-white shadow-[0_24px_70px_rgba(48,53,43,0.22)] sm:p-8'>
             <p className='text-sm font-medium text-white/65'>Date range</p>
 
             <h2 className='mt-1 text-2xl font-semibold'>Custom Hours Report</h2>
 
-            <div className='mt-6 grid min-w-0 gap-4 sm:grid-cols-2'>
-              <div className='min-w-0'>
+           <div className='mt-6 grid w-full min-w-0 max-w-full gap-4 sm:grid-cols-2'>
+  <div className='w-full min-w-0 max-w-full'>
                 <label
                   htmlFor='start-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
@@ -812,11 +812,12 @@ function App() {
                   type='date'
                   value={startDate}
                   onChange={(event) => setStartDate(event.target.value)}
-                  className='box-border w-full min-w-0 max-w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
+                  className='ios-date-input rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
                 />
               </div>
 
-              <div className='min-w-0'>
+           <div className='mt-6 grid w-full min-w-0 max-w-full gap-4 sm:grid-cols-2'>
+  <div className='w-full min-w-0 max-w-full'>
                 <label
                   htmlFor='end-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
@@ -830,7 +831,7 @@ function App() {
                   value={endDate}
                   min={startDate}
                   onChange={(event) => setEndDate(event.target.value)}
-                  className='box-border w-full min-w-0 max-w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
+                  className='ios-date-input rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
                 />
               </div>
             </div>
