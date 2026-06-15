@@ -262,9 +262,9 @@ Every push to the `main` branch triggers a new deployment.
 
 ## Screenshots
 
-- !(docs/screenshots/ss3.jpg)
-- !(docs/screenshots/ss2.png)
-- !(docs/screenshots/ss1.png)
+- ![login screen](docs/screenshots/ss3.png)
+- ![manager's dashboard](docs/screenshots/ss2.png)
+- ![employee interface](docs/screenshots/ss1.png)
 
 ## Roadmap
 
