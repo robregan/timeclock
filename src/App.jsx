@@ -798,8 +798,8 @@ function App() {
 
             <h2 className='mt-1 text-2xl font-semibold'>Custom Hours Report</h2>
 
-            <div className='mt-6 grid gap-4 sm:grid-cols-2'>
-              <div>
+            <div className='mt-6 grid min-w-0 gap-4 sm:grid-cols-2'>
+              <div className='min-w-0'>
                 <label
                   htmlFor='start-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
@@ -812,11 +812,11 @@ function App() {
                   type='date'
                   value={startDate}
                   onChange={(event) => setStartDate(event.target.value)}
-                  className='w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
+                  className='box-border w-full min-w-0 max-w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
                 />
               </div>
 
-              <div>
+              <div className='min-w-0'>
                 <label
                   htmlFor='end-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
@@ -830,7 +830,7 @@ function App() {
                   value={endDate}
                   min={startDate}
                   onChange={(event) => setEndDate(event.target.value)}
-                  className='w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
+                  className='box-border w-full min-w-0 max-w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
                 />
               </div>
             </div>
