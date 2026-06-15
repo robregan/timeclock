@@ -798,8 +798,8 @@ function App() {
 
             <h2 className='mt-1 text-2xl font-semibold'>Custom Hours Report</h2>
 
-           <div className='mt-6 grid w-full min-w-0 max-w-full gap-4 sm:grid-cols-2'>
-  <div className='w-full min-w-0 max-w-full'>
+            <div className='mt-6 grid w-full min-w-0 max-w-full gap-4 sm:grid-cols-2'>
+              <div className='w-full min-w-0 max-w-full'>
                 <label
                   htmlFor='start-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
@@ -816,8 +816,7 @@ function App() {
                 />
               </div>
 
-           <div className='mt-6 grid w-full min-w-0 max-w-full gap-4 sm:grid-cols-2'>
-  <div className='w-full min-w-0 max-w-full'>
+              <div className='w-full min-w-0 max-w-full'>
                 <label
                   htmlFor='end-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
@@ -856,7 +855,6 @@ function App() {
               </button>
             </div>
           </section>
-
           {errorMessage && (
             <p className='mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700'>
               {errorMessage}
