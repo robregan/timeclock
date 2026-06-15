@@ -1054,7 +1054,7 @@ function App() {
                 disabled={loading}
                 className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50'
               >
-                {t.refresh}
+                Refresh
               </button>
             </div>
 
