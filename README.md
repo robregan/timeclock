@@ -268,7 +268,6 @@ Every push to the `main` branch triggers a new deployment.
 
 ## Roadmap
 
-- Manager-created manual time entries
 - Employee management screen
 - PIN reset workflow
 - Payroll-period presets
