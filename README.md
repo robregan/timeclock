@@ -1,209 +1,310 @@
 # Hapgood Clock
 
-A lightweight browser-based employee time clock built with React and Supabase.
+A browser-based employee time clock built for a small restaurant team.
 
-Employees can sign in with a four-digit PIN, clock in and out, and review their recent shifts. Time entries are stored in a shared Supabase database, allowing the app to work across multiple devices.
+Employees can clock in and out, review recent shifts, and submit correction requests. Managers can review team hours, approve or reject corrections, and generate reports for custom date ranges.
+
+## Live App
+
+https://hapgood-clock.netlify.app
 
 ## Features
 
-- Employee selection
-- Four-digit PIN verification
-- Clock in and clock out
-- Shared cloud-based time entries
+### Employee experience
+
+- Secure 4-digit PIN login
+- Clock in and clock out from any browser
+- Live date and time display
 - Recent shift history
-- Prevention of duplicate open shifts
-- Responsive layout for desktop, tablet, and mobile
-- Hashed employee PINs
-- Database-backed access controls
-- Loading and error states
+- Shift duration calculations
+- Submit correction requests for completed shifts
+- View correction status as pending, approved, or rejected
+- Spanish-first employee interface
+- English and Spanish language toggle
+- Language preference saved in the browser
+- Responsive design for phones, tablets, and desktop
+
+### Manager experience
+
+- Separate manager-only dashboard
+- English manager interface
+- View total team hours
+- View totals for each employee
+- See who is currently clocked in
+- Select a custom report date range
+- Quick-select the current week
+- Review pending correction requests
+- Compare original and requested shift times
+- Approve or reject correction requests
+- Add an optional manager note
+- Approved corrections automatically update reported hours
+- Manager account cannot clock in or out
 
 ## Tech Stack
 
 - React
 - Vite
+- Tailwind CSS
 - Supabase
 - PostgreSQL
 - JavaScript
-- CSS
+- Netlify
 
 ## Project Structure
 
-hapgood-clock/
-├── public/
-├── src/
-│ ├── App.jsx
-│ ├── App.css
-│ ├── supabaseClient.js
-│ └── main.jsx
-├── .env.example
-├── .gitignore
-├── package.json
-├── package-lock.json
-└── README.md
+- public/
+- src/
+  - App.jsx
+  - index.css
+  - main.jsx
+  - supabaseClient.js
+- .env.example
+- .gitignore
+- index.html
+- package.json
+- package-lock.json
+- vite.config.js
+- README.md
 
 ## Getting Started
 
 ### Prerequisites
 
-Install the following before running the project:
+Install:
 
 - Node.js 20.19 or newer
 - npm
 - A Supabase account
 
-### Installation
+### Clone the repository
 
-Clone the repository:
+Run:
 
-git clone https://github.com/robregan/hapgood-clock.git
-cd hapgood-clock
+    git clone https://github.com/robregan/hapgood-clock.git
+    cd hapgood-clock
 
-Install the dependencies:
+### Install dependencies
 
-npm install
+Run:
 
-Create a local environment file:
+    npm install
 
-cp .env.example .env.local
+### Configure environment variables
 
-Add your Supabase project credentials to `.env.local`:
+Copy the example file:
 
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+    cp .env.example .env.local
 
-Start the development server:
+Add your Supabase project values to `.env.local`:
 
-npm run dev
+    VITE_SUPABASE_URL=your_supabase_project_url
+    VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 
-Open the local URL shown in the terminal, usually:
+Do not commit `.env.local`.
 
-http://localhost:5173
+Never expose a Supabase service-role key in the frontend.
 
-## Environment Variables
+### Run locally
 
-The application requires the following environment variables:
+Run:
 
-| Variable                        | Description                          |
-| ------------------------------- | ------------------------------------ |
-| `VITE_SUPABASE_URL`             | The URL of the Supabase project      |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | The public browser-safe Supabase key |
+    npm run dev
 
-The `.env.local` file should never be committed to the repository.
+Vite will display a local address, usually:
 
-The included `.env.example` file documents the required variables without exposing real credentials.
-
-## Database Overview
-
-The app currently uses two primary tables.
-
-### `employees`
-
-Stores employee records.
-
-Important fields include:
-
-- `id`
-- `name`
-- `pin_hash`
-- `active`
-- `created_at`
-
-Employee PINs are stored as hashes rather than readable text.
-
-### `time_entries`
-
-Stores employee shifts.
-
-Important fields include:
-
-- `id`
-- `employee_id`
-- `employee_name`
-- `clock_in`
-- `clock_out`
-- `created_at`
-
-A partial unique database index prevents an employee from having more than one open shift at a time.
-
-## Database Functions
-
-The React frontend interacts with Supabase through approved PostgreSQL functions rather than directly modifying the tables.
-
-Current functions include:
-
-- `list_active_employees`
-- `verify_employee_pin`
-- `clock_in_employee`
-- `clock_out_employee`
-- `get_employee_entries`
-
-These functions validate the employee PIN before returning private shift data or modifying time entries.
-
-## Security Notes
-
-This project is intended for a small workplace time-clock system.
-
-Current protections include:
-
-- Hashed employee PINs
-- Row Level Security
-- Restricted table permissions
-- Server-side PIN verification
-- Controlled database functions
-- Duplicate-shift prevention
-
-A four-digit PIN should not be treated as strong authentication. Before broad public deployment, the project should also include rate limiting, request throttling, or stronger authentication.
-
-Never expose a Supabase service-role key in this project. Only the publishable browser key belongs in the frontend environment configuration.
+    http://localhost:5173
 
 ## Available Scripts
 
-Start the development server:
+Development server:
 
-npm run dev
+    npm run dev
 
-Create a production build:
+Production build:
 
-npm run build
+    npm run build
 
-Preview the production build locally:
+Preview the production build:
 
-npm run preview
+    npm run preview
 
 Run the linter:
 
-npm run lint
+    npm run lint
 
-## Planned Features
+## Database Overview
 
-- Manager and administrator dashboard
-- Add, deactivate, and edit employees
-- Edit incorrect time entries
-- Weekly hour totals
-- Payroll-period summaries
+### employees
+
+Stores employee and manager accounts.
+
+Important fields:
+
+- id
+- name
+- pin_hash
+- role
+- can_clock
+- active
+- created_at
+
+PINs are stored as hashes and are never saved as readable text.
+
+### time_entries
+
+Stores clock-in and clock-out records.
+
+Important fields:
+
+- id
+- employee_id
+- employee_name
+- clock_in
+- clock_out
+- created_at
+- edited_at
+- edited_by
+- edit_reason
+
+A partial unique index prevents an employee from having more than one open shift.
+
+### shift_correction_requests
+
+Stores employee requests to correct completed shifts.
+
+Important fields:
+
+- id
+- time_entry_id
+- employee_id
+- requested_clock_in
+- requested_clock_out
+- reason
+- status
+- reviewed_by
+- reviewed_at
+- manager_note
+- created_at
+
+Only one pending correction request is allowed per shift.
+
+## Database Functions
+
+The browser does not directly modify protected tables. It calls controlled PostgreSQL functions through Supabase RPC.
+
+Current functions include:
+
+- list_active_employees
+- verify_employee_pin
+- clock_in_employee
+- clock_out_employee
+- get_employee_entries
+- get_manager_hour_totals
+- submit_shift_correction
+- get_employee_correction_requests
+- get_pending_correction_requests
+- review_shift_correction
+
+## Correction Workflow
+
+1. An employee selects a completed shift.
+2. The employee submits corrected clock-in and clock-out times with a reason.
+3. The request appears in the manager dashboard.
+4. The manager approves or rejects it.
+5. Approval updates the original shift.
+6. The correction request remains as an audit record.
+
+Employees cannot directly edit payroll records.
+
+## Security
+
+Current protections include:
+
+- Hashed PINs using PostgreSQL cryptographic functions
+- Row Level Security enabled on protected tables
+- Restricted direct table permissions
+- Server-side PIN verification
+- Role-based manager authorization
+- Database-level duplicate open-shift prevention
+- Manager-only correction approval
+- Audit fields for approved edits
+- Frontend uses only the Supabase publishable key
+
+A 4-digit PIN is appropriate for a small internal workplace app, but it is not strong authentication for sensitive financial or identity systems.
+
+Recommended future hardening:
+
+- Failed-login rate limiting
+- Account lockout after repeated attempts
+- Stronger manager authentication
+- Formal audit log
+- Automated backups
+- Session timeout
+
+## Deployment
+
+The app is deployed with Netlify.
+
+Build command:
+
+    npm run build
+
+Publish directory:
+
+    dist
+
+Required Netlify environment variables:
+
+    VITE_SUPABASE_URL
+    VITE_SUPABASE_PUBLISHABLE_KEY
+
+Every push to the `main` branch triggers a new deployment.
+
+## Screenshots
+
+Add screenshots to a folder such as `docs/screenshots/`, then reference them in this README.
+
+Example image paths:
+
+- docs/screenshots/employee-dashboard.png
+- docs/screenshots/manager-dashboard.png
+- docs/screenshots/correction-request.png
+
+## Roadmap
+
 - CSV payroll export
-- Employee notes
+- Manager-created manual time entries
+- Employee management screen
+- PIN reset workflow
+- Payroll-period presets
 - Break tracking
-- Manager approval workflow
-- Improved request throttling
-- Deployment to a production host
+- Manager audit history
+- Failed-login throttling
+- Stronger authentication for managers
+- Optional email notifications for correction requests
+- Installable Progressive Web App support
 
-## Project Status
+## Status
 
-The core employee workflow is functional:
+Version 1 is deployed and functional.
 
-1. Select an employee
-2. Enter a PIN
-3. Clock in or clock out
-4. Review recent shifts
-5. Store all records in Supabase
+Current production workflows include:
 
-The project is currently under active development.
+- Employee login
+- Clock in and clock out
+- Spanish and English employee interface
+- Recent shift history
+- Employee correction requests
+- Manager approval and rejection
+- Custom date-range reporting
+- Team and employee hour totals
 
 ## Author
 
-Built by [Rob Regan](https://github.com/robregan).
+Built by Rob Regan.
+
+GitHub: https://github.com/robregan
 
 ## License
 
-This project is currently unlicensed and intended for private or internal use.
+This project is currently unlicensed and intended for private or internal workplace use.
