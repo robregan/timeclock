@@ -260,7 +260,7 @@ Required Netlify environment variables:
 
 Every push to the `main` branch triggers a new deployment.
 
-## Screenshots
+<!-- ## Screenshots
 
 Add screenshots to a folder such as `docs/screenshots/`, then reference them in this README.
 
@@ -268,7 +268,7 @@ Example image paths:
 
 - docs/screenshots/employee-dashboard.png
 - docs/screenshots/manager-dashboard.png
-- docs/screenshots/correction-request.png
+- docs/screenshots/correction-request.png -->
 
 ## Roadmap
 
