@@ -1,12 +1,221 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 
+function getStartOfWeek(date) {
+  const result = new Date(date)
+  const day = result.getDay()
+  const difference = day === 0 ? -6 : 1 - day
+
+  result.setDate(result.getDate() + difference)
+  result.setHours(0, 0, 0, 0)
+
+  return result
+}
+
+function addDays(date, days) {
+  const result = new Date(date)
+  result.setDate(result.getDate() + days)
+  return result
+}
+
+function formatDateForInput(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function formatDateTimeForInput(value) {
+  const date = new Date(value)
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+const translations = {
+  en: {
+    staffLabel: 'Hapgood Staff',
+    employeeTimeClock: 'Employee Time Clock',
+    loginInstructions: 'Select your name and enter your PIN to continue.',
+    employee: 'Employee',
+    pin: '4-digit PIN',
+    checking: 'Checking...',
+    continue: 'Continue',
+    hello: 'Welcome',
+    signOut: 'Sign Out',
+    clockIn: 'Clock In',
+    clockOut: 'Clock Out',
+    saving: 'Saving...',
+    clockedOut: 'You are currently clocked out',
+    clockedInAt: 'Clocked in at',
+    recentShifts: 'Recent Shifts',
+    recentShiftsDescription: 'Your 20 most recent time entries',
+    refresh: 'Refresh',
+    loadingEntries: 'Loading entries...',
+    noShifts: 'No shifts yet',
+    noShiftsDescription: 'Your completed shifts will appear here.',
+    active: 'Active',
+    inProgress: 'In progress',
+    requestCorrection: 'Request Correction',
+    correctionPending: 'Correction pending',
+    correctionApproved: 'Correction approved',
+    correctionRejected: 'Correction rejected',
+    employeeFooter: 'Hapgood Employee Time Clock',
+    shiftCorrection: 'Shift Correction',
+    requestChange: 'Request a change',
+    managerApprovalNotice: 'This request must be approved by a manager.',
+    close: 'Close',
+    correctClockIn: 'Correct clock-in',
+    correctClockOut: 'Correct clock-out',
+    reason: 'Reason',
+    reasonPlaceholder: 'Example: I forgot to clock out before leaving.',
+    submitting: 'Submitting...',
+    submitCorrection: 'Submit Correction Request',
+    errors: {
+      loginFields: 'Select an employee and enter a 4-digit PIN.',
+      incorrectPin: 'Incorrect PIN.',
+      employeeNotFound: 'Could not find that employee.',
+      loadEmployees: 'Could not load employees.',
+      loadEntries: 'Could not load time entries.',
+      loadCorrections: 'Could not load correction requests.',
+      alreadyClockedIn: 'You are already clocked in.',
+      clockInFailed: 'Clock-in failed.',
+      clockOutFailed: 'Clock-out failed.',
+      correctionFields: 'Enter the corrected times and a short explanation.',
+      invalidTimeOrder: 'Clock-out must be after clock-in.',
+      correctionPending:
+        'A correction request is already pending for this shift.',
+      correctionSubmitFailed: 'Could not submit correction request.',
+    },
+  },
+  es: {
+    staffLabel: 'Personal de Hapgood',
+    employeeTimeClock: 'Reloj de empleados',
+    loginInstructions: 'Selecciona tu nombre e ingresa tu PIN para continuar.',
+    employee: 'Empleado',
+    pin: 'PIN de 4 dígitos',
+    checking: 'Verificando...',
+    continue: 'Continuar',
+    hello: 'Hola',
+    signOut: 'Cerrar sesión',
+    clockIn: 'Marcar entrada',
+    clockOut: 'Marcar salida',
+    saving: 'Guardando...',
+    clockedOut: 'Actualmente no has marcado entrada',
+    clockedInAt: 'Entrada registrada a las',
+    recentShifts: 'Turnos recientes',
+    recentShiftsDescription: 'Tus 20 registros de tiempo más recientes',
+    refresh: 'Actualizar',
+    loadingEntries: 'Cargando registros...',
+    noShifts: 'Aún no hay turnos',
+    noShiftsDescription: 'Tus turnos completados aparecerán aquí.',
+    active: 'Activo',
+    inProgress: 'En curso',
+    requestCorrection: 'Solicitar corrección',
+    correctionPending: 'Corrección pendiente',
+    correctionApproved: 'Corrección aprobada',
+    correctionRejected: 'Corrección rechazada',
+    employeeFooter: 'Reloj de empleados de Hapgood',
+    shiftCorrection: 'Corrección de turno',
+    requestChange: 'Solicitar un cambio',
+    managerApprovalNotice: 'Esta solicitud debe ser aprobada por un gerente.',
+    close: 'Cerrar',
+    correctClockIn: 'Hora correcta de entrada',
+    correctClockOut: 'Hora correcta de salida',
+    reason: 'Motivo',
+    reasonPlaceholder: 'Ejemplo: Olvidé marcar la salida antes de irme.',
+    submitting: 'Enviando...',
+    submitCorrection: 'Enviar solicitud de corrección',
+    errors: {
+      loginFields: 'Selecciona un empleado e ingresa un PIN de 4 dígitos.',
+      incorrectPin: 'PIN incorrecto.',
+      employeeNotFound: 'No se pudo encontrar a ese empleado.',
+      loadEmployees: 'No se pudo cargar la lista de empleados.',
+      loadEntries: 'No se pudieron cargar los registros de tiempo.',
+      loadCorrections: 'No se pudieron cargar las solicitudes de corrección.',
+      alreadyClockedIn: 'Ya has marcado tu entrada.',
+      clockInFailed: 'No se pudo marcar la entrada.',
+      clockOutFailed: 'No se pudo marcar la salida.',
+      correctionFields: 'Ingresa las horas corregidas y una breve explicación.',
+      invalidTimeOrder:
+        'La hora de salida debe ser posterior a la hora de entrada.',
+      correctionPending:
+        'Ya hay una solicitud de corrección pendiente para este turno.',
+      correctionSubmitFailed: 'No se pudo enviar la solicitud de corrección.',
+    },
+  },
+}
+
+function LanguageToggle({ language, onChange }) {
+  return (
+    <div className='inline-flex rounded-xl border border-stone-300 bg-white p-1 shadow-sm'>
+      <button
+        type='button'
+        onClick={() => onChange('es')}
+        className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+          language === 'es'
+            ? 'bg-[#2f352b] text-white'
+            : 'text-stone-600 hover:bg-stone-100'
+        }`}
+      >
+        Español
+      </button>
+
+      <button
+        type='button'
+        onClick={() => onChange('en')}
+        className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+          language === 'en'
+            ? 'bg-[#2f352b] text-white'
+            : 'text-stone-600 hover:bg-stone-100'
+        }`}
+      >
+        English
+      </button>
+    </div>
+  )
+}
+
 function App() {
   const [employees, setEmployees] = useState([])
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [pin, setPin] = useState('')
   const [loggedInEmployee, setLoggedInEmployee] = useState(null)
+  const [language, setLanguage] = useState(
+    () => localStorage.getItem('employeeLanguage') || 'es',
+  )
+  const t = translations[language]
+
   const [entries, setEntries] = useState([])
+  const [managerTotals, setManagerTotals] = useState([])
+  const [correctionRequests, setCorrectionRequests] = useState([])
+  const [pendingCorrections, setPendingCorrections] = useState([])
+
+  const [selectedShift, setSelectedShift] = useState(null)
+  const [requestedClockIn, setRequestedClockIn] = useState('')
+  const [requestedClockOut, setRequestedClockOut] = useState('')
+  const [correctionReason, setCorrectionReason] = useState('')
+
+  const [activeManagerNoteId, setActiveManagerNoteId] = useState(null)
+  const [reviewingRequestId, setReviewingRequestId] = useState(null)
+  const [managerNote, setManagerNote] = useState('')
+
+  const currentWeekStart = getStartOfWeek(new Date())
+
+  const [startDate, setStartDate] = useState(() =>
+    formatDateForInput(currentWeekStart),
+  )
+
+  const [endDate, setEndDate] = useState(() =>
+    formatDateForInput(addDays(currentWeekStart, 6)),
+  )
+
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -24,6 +233,11 @@ function App() {
     return () => window.clearInterval(interval)
   }, [])
 
+  function changeLanguage(nextLanguage) {
+    setLanguage(nextLanguage)
+    localStorage.setItem('employeeLanguage', nextLanguage)
+  }
+
   async function loadEmployees() {
     setLoading(true)
     setErrorMessage('')
@@ -32,7 +246,7 @@ function App() {
 
     if (error) {
       console.error(error)
-      setErrorMessage('Could not load employees.')
+      setErrorMessage(translations[language].errors.loadEmployees)
     } else {
       setEmployees(data ?? [])
 
@@ -48,7 +262,7 @@ function App() {
     event.preventDefault()
 
     if (!selectedEmployeeId || pin.length !== 4) {
-      setErrorMessage('Select an employee and enter a 4-digit PIN.')
+      setErrorMessage(loginT.errors.loginFields)
       return
     }
 
@@ -62,15 +276,33 @@ function App() {
 
     if (error || data !== true) {
       console.error(error)
-      setErrorMessage('Incorrect PIN.')
+      setErrorMessage(loginT.errors.incorrectPin)
       setSubmitting(false)
       return
     }
 
     const employee = employees.find((item) => item.id === selectedEmployeeId)
 
+    if (!employee) {
+      setErrorMessage(loginT.errors.employeeNotFound)
+      setSubmitting(false)
+      return
+    }
+
     setLoggedInEmployee(employee)
-    await loadEntries(selectedEmployeeId, pin)
+
+    if (employee.role === 'manager' && employee.can_clock === false) {
+      await Promise.all([
+        loadManagerTotals(employee.id, pin),
+        loadPendingCorrections(employee.id, pin),
+      ])
+    } else {
+      await Promise.all([
+        loadEntries(employee.id, pin),
+        loadEmployeeCorrectionRequests(employee.id, pin),
+      ])
+    }
+
     setSubmitting(false)
   }
 
@@ -92,12 +324,99 @@ function App() {
 
     if (error) {
       console.error(error)
-      setErrorMessage('Could not load time entries.')
+      setErrorMessage(t.errors.loadEntries)
     } else {
       setEntries(data ?? [])
     }
 
     setLoading(false)
+  }
+
+  async function loadManagerTotals(
+    managerId = loggedInEmployee?.id,
+    managerPin = pin,
+  ) {
+    if (!managerId || !managerPin || !startDate || !endDate) {
+      return
+    }
+
+    if (new Date(startDate) > new Date(endDate)) {
+      setErrorMessage('The start date must be before the end date.')
+      return
+    }
+
+    setLoading(true)
+    setErrorMessage('')
+
+    const rangeStart = new Date(`${startDate}T00:00:00`)
+    const rangeEnd = new Date(`${endDate}T00:00:00`)
+    rangeEnd.setDate(rangeEnd.getDate() + 1)
+
+    const { data, error } = await supabase.rpc('get_manager_hour_totals', {
+      p_manager_id: managerId,
+      p_pin: managerPin,
+      p_start_date: rangeStart.toISOString(),
+      p_end_date: rangeEnd.toISOString(),
+    })
+
+    if (error) {
+      console.error(error)
+      setErrorMessage('Could not load employee totals.')
+      setManagerTotals([])
+    } else {
+      setManagerTotals(data ?? [])
+    }
+
+    setLoading(false)
+  }
+
+  async function loadPendingCorrections(
+    managerId = loggedInEmployee?.id,
+    managerPin = pin,
+  ) {
+    if (!managerId || !managerPin) {
+      return
+    }
+
+    const { data, error } = await supabase.rpc(
+      'get_pending_correction_requests',
+      {
+        p_manager_id: managerId,
+        p_pin: managerPin,
+      },
+    )
+
+    if (error) {
+      console.error(error)
+      setErrorMessage(t.errors.loadCorrections)
+      setPendingCorrections([])
+    } else {
+      setPendingCorrections(data ?? [])
+    }
+  }
+
+  async function loadEmployeeCorrectionRequests(
+    employeeId = loggedInEmployee?.id,
+    employeePin = pin,
+  ) {
+    if (!employeeId || !employeePin) {
+      return
+    }
+
+    const { data, error } = await supabase.rpc(
+      'get_employee_correction_requests',
+      {
+        p_employee_id: employeeId,
+        p_pin: employeePin,
+      },
+    )
+
+    if (error) {
+      console.error(error)
+      setErrorMessage(t.errors.loadCorrections)
+    } else {
+      setCorrectionRequests(data ?? [])
+    }
   }
 
   const activeEntry = entries.find((entry) => entry.clock_out === null)
@@ -119,8 +438,8 @@ function App() {
       console.error(error)
       setErrorMessage(
         error.message.includes('already clocked in')
-          ? 'You are already clocked in.'
-          : 'Clock-in failed.',
+          ? t.errors.alreadyClockedIn
+          : t.errors.clockInFailed,
       )
     } else {
       await loadEntries()
@@ -144,7 +463,7 @@ function App() {
 
     if (error) {
       console.error(error)
-      setErrorMessage('Clock-out failed.')
+      setErrorMessage(t.errors.clockOutFailed)
     } else {
       await loadEntries()
     }
@@ -152,11 +471,130 @@ function App() {
     setSubmitting(false)
   }
 
+  function openCorrectionForm(entry) {
+    setSelectedShift(entry)
+    setRequestedClockIn(formatDateTimeForInput(entry.clock_in))
+    setRequestedClockOut(formatDateTimeForInput(entry.clock_out))
+    setCorrectionReason('')
+    setErrorMessage('')
+  }
+
+  function closeCorrectionForm() {
+    if (submitting) {
+      return
+    }
+
+    setSelectedShift(null)
+    setRequestedClockIn('')
+    setRequestedClockOut('')
+    setCorrectionReason('')
+    setErrorMessage('')
+  }
+
+  async function submitCorrectionRequest(event) {
+    event.preventDefault()
+
+    if (
+      !selectedShift ||
+      !requestedClockIn ||
+      !requestedClockOut ||
+      correctionReason.trim().length < 3
+    ) {
+      setErrorMessage(t.errors.correctionFields)
+      return
+    }
+
+    const clockInDate = new Date(requestedClockIn)
+    const clockOutDate = new Date(requestedClockOut)
+
+    if (clockOutDate <= clockInDate) {
+      setErrorMessage(t.errors.invalidTimeOrder)
+      return
+    }
+
+    setSubmitting(true)
+    setErrorMessage('')
+
+    const { error } = await supabase.rpc('submit_shift_correction', {
+      p_employee_id: loggedInEmployee.id,
+      p_pin: pin,
+      p_time_entry_id: selectedShift.id,
+      p_requested_clock_in: clockInDate.toISOString(),
+      p_requested_clock_out: clockOutDate.toISOString(),
+      p_reason: correctionReason.trim(),
+    })
+
+    if (error) {
+      console.error(error)
+
+      if (error.message.includes('already pending')) {
+        setErrorMessage(t.errors.correctionPending)
+      } else {
+        setErrorMessage(t.errors.correctionSubmitFailed)
+      }
+    } else {
+      await loadEmployeeCorrectionRequests()
+      closeCorrectionForm()
+    }
+
+    setSubmitting(false)
+  }
+
+  async function reviewCorrection(requestId, decision) {
+    if (!loggedInEmployee || reviewingRequestId) {
+      return
+    }
+
+    setReviewingRequestId(requestId)
+    setErrorMessage('')
+
+    const { error } = await supabase.rpc('review_shift_correction', {
+      p_manager_id: loggedInEmployee.id,
+      p_pin: pin,
+      p_request_id: requestId,
+      p_decision: decision,
+      p_manager_note:
+        activeManagerNoteId === requestId ? managerNote.trim() || null : null,
+    })
+
+    if (error) {
+      console.error(error)
+      setErrorMessage('Could not review correction request.')
+    } else {
+      setManagerNote('')
+      setActiveManagerNoteId(null)
+
+      await Promise.all([loadPendingCorrections(), loadManagerTotals()])
+    }
+
+    setReviewingRequestId(null)
+  }
+
+  function getCorrectionForShift(timeEntryId) {
+    return correctionRequests.find(
+      (request) => request.time_entry_id === timeEntryId,
+    )
+  }
+
   function logOut() {
+    const beginning = getStartOfWeek(new Date())
+
+    setCorrectionRequests([])
+    setPendingCorrections([])
+    setSelectedShift(null)
+    setRequestedClockIn('')
+    setRequestedClockOut('')
+    setCorrectionReason('')
+    setManagerNote('')
+    setActiveManagerNoteId(null)
+    setReviewingRequestId(null)
     setLoggedInEmployee(null)
     setPin('')
     setEntries([])
+    setManagerTotals([])
     setErrorMessage('')
+    setStartDate(formatDateForInput(beginning))
+    setEndDate(formatDateForInput(addDays(beginning, 6)))
   }
 
   function formatTime(value) {
@@ -176,39 +614,76 @@ function App() {
 
   function calculateDuration(clockIn, clockOut) {
     if (!clockOut) {
-      return 'In progress'
+      return t.inProgress
     }
 
     const milliseconds =
       new Date(clockOut).getTime() - new Date(clockIn).getTime()
 
     const totalMinutes = Math.max(0, Math.floor(milliseconds / 60000))
-
     const hours = Math.floor(totalMinutes / 60)
     const minutes = totalMinutes % 60
 
     return `${hours}h ${minutes}m`
   }
 
+  function formatSeconds(totalSeconds) {
+    const seconds = Number(totalSeconds ?? 0)
+    const totalMinutes = Math.floor(seconds / 60)
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+
+    return `${hours}h ${minutes}m`
+  }
+
+  function selectCurrentWeek() {
+    const beginning = getStartOfWeek(new Date())
+
+    setStartDate(formatDateForInput(beginning))
+    setEndDate(formatDateForInput(addDays(beginning, 6)))
+  }
+
+  const totalTeamSeconds = managerTotals.reduce(
+    (total, employee) => total + Number(employee.total_seconds ?? 0),
+    0,
+  )
+
+  const currentlyClockedInCount = managerTotals.filter(
+    (employee) => employee.currently_clocked_in,
+  ).length
+
+  const selectedLoginEmployee = employees.find(
+    (employee) => employee.id === selectedEmployeeId,
+  )
+  const loginLanguage =
+    selectedLoginEmployee?.role === 'manager' ? 'en' : language
+  const loginT = translations[loginLanguage]
+
   if (!loggedInEmployee) {
     return (
       <main className='min-h-screen bg-[#f4f0e7] px-4 py-10 text-stone-800 sm:px-6'>
         <div className='mx-auto max-w-md'>
+          {selectedLoginEmployee?.role !== 'manager' && (
+            <div className='mb-6 flex justify-end'>
+              <LanguageToggle language={language} onChange={changeLanguage} />
+            </div>
+          )}
+
           <header className='mb-8 text-center'>
             <div className='mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#5f6f52] text-xl font-bold text-white shadow-sm'>
               H
             </div>
 
             <p className='mb-2 text-xs font-semibold tracking-[0.25em] text-[#6f735f] uppercase'>
-              Hapgood Staff
+              {loginT.staffLabel}
             </p>
 
             <h1 className='text-3xl font-semibold tracking-tight text-stone-900'>
-              Employee Time Clock
+              {loginT.employeeTimeClock}
             </h1>
 
             <p className='mt-3 text-sm leading-6 text-stone-600'>
-              Select your name and enter your PIN to continue.
+              {loginT.loginInstructions}
             </p>
           </header>
 
@@ -222,7 +697,7 @@ function App() {
                   className='mb-2 block text-sm font-semibold text-stone-700'
                   htmlFor='employee'
                 >
-                  Employee
+                  {loginT.employee}
                 </label>
 
                 <select
@@ -247,7 +722,7 @@ function App() {
                   className='mb-2 block text-sm font-semibold text-stone-700'
                   htmlFor='pin'
                 >
-                  4-digit PIN
+                  {loginT.pin}
                 </label>
 
                 <input
@@ -272,7 +747,7 @@ function App() {
                 disabled={loading || submitting || pin.length !== 4}
                 className='w-full rounded-xl bg-[#2f352b] px-5 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-[#252a22] focus:outline-none focus:ring-4 focus:ring-[#2f352b]/20 disabled:cursor-not-allowed disabled:opacity-50'
               >
-                {submitting ? 'Checking...' : 'Continue'}
+                {submitting ? loginT.checking : loginT.continue}
               </button>
             </div>
 
@@ -287,17 +762,370 @@ function App() {
     )
   }
 
+  if (
+    loggedInEmployee.role === 'manager' &&
+    loggedInEmployee.can_clock === false
+  ) {
+    return (
+      <main className='min-h-screen bg-[#f4f0e7] px-4 py-6 text-stone-800 sm:px-6 sm:py-10'>
+        <div className='mx-auto max-w-4xl'>
+          <header className='mb-6 flex items-start justify-between gap-4'>
+            <div>
+              <p className='mb-1 text-xs font-semibold tracking-[0.22em] text-[#6f735f] uppercase'>
+                Hapgood Management
+              </p>
+
+              <h1 className='text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl'>
+                Hours Summary
+              </h1>
+
+              <p className='mt-2 text-sm text-stone-600'>
+                Signed in as {loggedInEmployee.name}
+              </p>
+            </div>
+
+            <button
+              type='button'
+              onClick={logOut}
+              className='rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 shadow-sm transition hover:bg-stone-50'
+            >
+              Sign Out
+            </button>
+          </header>
+
+          <section className='mb-6 rounded-3xl bg-[#2f352b] p-6 text-white shadow-[0_24px_70px_rgba(48,53,43,0.22)] sm:p-8'>
+            <p className='text-sm font-medium text-white/65'>Date range</p>
+
+            <h2 className='mt-1 text-2xl font-semibold'>Custom Hours Report</h2>
+
+            <div className='mt-6 grid gap-4 sm:grid-cols-2'>
+              <div>
+                <label
+                  htmlFor='start-date'
+                  className='mb-2 block text-sm font-semibold text-white/80'
+                >
+                  Start date
+                </label>
+
+                <input
+                  id='start-date'
+                  type='date'
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  className='w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor='end-date'
+                  className='mb-2 block text-sm font-semibold text-white/80'
+                >
+                  End date
+                </label>
+
+                <input
+                  id='end-date'
+                  type='date'
+                  value={endDate}
+                  min={startDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  className='w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-stone-900 outline-none focus:ring-4 focus:ring-white/20'
+                />
+              </div>
+            </div>
+
+            <div className='mt-5 flex flex-col gap-3 sm:flex-row'>
+              <button
+                type='button'
+                onClick={() => loadManagerTotals()}
+                disabled={loading || !startDate || !endDate}
+                className='rounded-xl bg-white px-5 py-3 text-sm font-semibold text-[#2f352b] transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                {loading ? 'Loading...' : 'Apply Date Range'}
+              </button>
+
+              <button
+                type='button'
+                onClick={selectCurrentWeek}
+                disabled={loading}
+                className='rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/15 transition hover:bg-white/15 disabled:opacity-50'
+              >
+                Select This Week
+              </button>
+            </div>
+          </section>
+
+          {errorMessage && (
+            <p className='mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700'>
+              {errorMessage}
+            </p>
+          )}
+
+          <section className='mb-6 grid gap-4 sm:grid-cols-2'>
+            <article className='rounded-3xl border border-stone-200 bg-white p-6 shadow-[0_16px_50px_rgba(67,62,51,0.08)]'>
+              <p className='text-sm font-medium text-stone-500'>
+                Total team hours
+              </p>
+              <p className='mt-2 text-3xl font-semibold text-stone-900'>
+                {formatSeconds(totalTeamSeconds)}
+              </p>
+            </article>
+
+            <article className='rounded-3xl border border-stone-200 bg-white p-6 shadow-[0_16px_50px_rgba(67,62,51,0.08)]'>
+              <p className='text-sm font-medium text-stone-500'>
+                Currently clocked in
+              </p>
+              <p className='mt-2 text-3xl font-semibold text-stone-900'>
+                {currentlyClockedInCount}
+              </p>
+            </article>
+          </section>
+
+          <section className='mb-6 rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_16px_50px_rgba(67,62,51,0.08)] sm:p-7'>
+            <div className='mb-5 flex items-center justify-between gap-4'>
+              <div>
+                <h2 className='text-xl font-semibold text-stone-900'>
+                  Pending Corrections
+                </h2>
+                <p className='mt-1 text-sm text-stone-500'>
+                  Review employee requests before changing payroll records.
+                </p>
+              </div>
+
+              <span className='rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700'>
+                {pendingCorrections.length} pending
+              </span>
+            </div>
+
+            {pendingCorrections.length === 0 ? (
+              <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
+                <p className='font-medium text-stone-700'>
+                  No pending correction requests
+                </p>
+              </div>
+            ) : (
+              <div className='space-y-4'>
+                {pendingCorrections.map((request) => (
+                  <article
+                    key={request.request_id}
+                    className='rounded-2xl border border-stone-200 bg-stone-50 p-5'
+                  >
+                    <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                      <div>
+                        <h3 className='text-lg font-semibold text-stone-900'>
+                          {request.employee_name}
+                        </h3>
+                        <p className='mt-1 text-sm text-stone-500'>
+                          Submitted{' '}
+                          {new Date(request.created_at).toLocaleString()}
+                        </p>
+                      </div>
+
+                      <span className='self-start rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700'>
+                        Pending
+                      </span>
+                    </div>
+
+                    <div className='mt-5 grid gap-4 sm:grid-cols-2'>
+                      <div className='rounded-xl bg-white p-4'>
+                        <p className='text-xs font-semibold tracking-wide text-stone-500 uppercase'>
+                          Original
+                        </p>
+                        <p className='mt-2 text-sm font-medium text-stone-800'>
+                          In:{' '}
+                          {new Date(request.original_clock_in).toLocaleString()}
+                        </p>
+                        <p className='mt-1 text-sm font-medium text-stone-800'>
+                          Out:{' '}
+                          {new Date(
+                            request.original_clock_out,
+                          ).toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div className='rounded-xl bg-white p-4 ring-1 ring-[#68785b]/20'>
+                        <p className='text-xs font-semibold tracking-wide text-[#68785b] uppercase'>
+                          Requested
+                        </p>
+                        <p className='mt-2 text-sm font-medium text-stone-800'>
+                          In:{' '}
+                          {new Date(
+                            request.requested_clock_in,
+                          ).toLocaleString()}
+                        </p>
+                        <p className='mt-1 text-sm font-medium text-stone-800'>
+                          Out:{' '}
+                          {new Date(
+                            request.requested_clock_out,
+                          ).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className='mt-4 rounded-xl bg-white p-4'>
+                      <p className='text-xs font-semibold tracking-wide text-stone-500 uppercase'>
+                        Employee reason
+                      </p>
+                      <p className='mt-2 text-sm leading-6 text-stone-700'>
+                        {request.reason}
+                      </p>
+                    </div>
+
+                    <div className='mt-4'>
+                      <label
+                        htmlFor={`manager-note-${request.request_id}`}
+                        className='mb-2 block text-sm font-semibold text-stone-700'
+                      >
+                        Manager note
+                      </label>
+
+                      <textarea
+                        id={`manager-note-${request.request_id}`}
+                        rows='2'
+                        value={
+                          activeManagerNoteId === request.request_id
+                            ? managerNote
+                            : ''
+                        }
+                        onFocus={() => {
+                          setActiveManagerNoteId(request.request_id)
+                          setManagerNote('')
+                        }}
+                        onChange={(event) => {
+                          setActiveManagerNoteId(request.request_id)
+                          setManagerNote(event.target.value)
+                        }}
+                        placeholder='Optional note'
+                        className='w-full resize-none rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15'
+                      />
+                    </div>
+
+                    <div className='mt-4 flex flex-col gap-3 sm:flex-row'>
+                      <button
+                        type='button'
+                        onClick={() =>
+                          reviewCorrection(request.request_id, 'approved')
+                        }
+                        disabled={reviewingRequestId !== null}
+                        className='flex-1 rounded-xl bg-[#2f352b] px-5 py-3 font-semibold text-white transition hover:bg-[#252a22] disabled:opacity-50'
+                      >
+                        {reviewingRequestId === request.request_id
+                          ? 'Processing...'
+                          : 'Approve'}
+                      </button>
+
+                      <button
+                        type='button'
+                        onClick={() =>
+                          reviewCorrection(request.request_id, 'rejected')
+                        }
+                        disabled={reviewingRequestId !== null}
+                        className='flex-1 rounded-xl border border-red-200 bg-red-50 px-5 py-3 font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50'
+                      >
+                        {reviewingRequestId === request.request_id
+                          ? 'Processing...'
+                          : 'Reject'}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className='rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_16px_50px_rgba(67,62,51,0.08)] sm:p-7'>
+            <div className='mb-5 flex items-center justify-between gap-4'>
+              <div>
+                <h2 className='text-xl font-semibold text-stone-900'>
+                  Employee Totals
+                </h2>
+                <p className='mt-1 text-sm text-stone-500'>
+                  Total hours and shifts from{' '}
+                  {new Date(`${startDate}T00:00:00`).toLocaleDateString()}
+                  {' through '}
+                  {new Date(`${endDate}T00:00:00`).toLocaleDateString()}
+                </p>
+              </div>
+
+              <button
+                type='button'
+                onClick={() => loadManagerTotals()}
+                disabled={loading}
+                className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                {t.refresh}
+              </button>
+            </div>
+
+            {loading ? (
+              <div className='py-12 text-center text-sm text-stone-500'>
+                Loading employee totals...
+              </div>
+            ) : managerTotals.length === 0 ? (
+              <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
+                <p className='font-medium text-stone-700'>No employees found</p>
+              </div>
+            ) : (
+              <div className='space-y-3'>
+                {managerTotals.map((employee) => (
+                  <article
+                    key={employee.employee_id}
+                    className='flex flex-col gap-4 rounded-2xl border border-stone-200 bg-stone-50 p-4 sm:flex-row sm:items-center sm:justify-between'
+                  >
+                    <div>
+                      <div className='flex items-center gap-2'>
+                        <h3 className='font-semibold text-stone-900'>
+                          {employee.employee_name}
+                        </h3>
+
+                        {employee.currently_clocked_in && (
+                          <span className='rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700'>
+                            Clocked In
+                          </span>
+                        )}
+                      </div>
+
+                      <p className='mt-1 text-sm text-stone-500'>
+                        {employee.shift_count}{' '}
+                        {Number(employee.shift_count) === 1
+                          ? 'shift'
+                          : 'shifts'}
+                      </p>
+                    </div>
+
+                    <p className='text-2xl font-semibold text-stone-900'>
+                      {formatSeconds(employee.total_seconds)}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <footer className='py-6 text-center text-xs text-stone-500'>
+            Hapgood Management Dashboard
+          </footer>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className='min-h-screen bg-[#f4f0e7] px-4 py-6 text-stone-800 sm:px-6 sm:py-10'>
       <div className='mx-auto max-w-2xl'>
+        <div className='mb-4 flex justify-end'>
+          <LanguageToggle language={language} onChange={changeLanguage} />
+        </div>
+
         <header className='mb-6 flex items-start justify-between gap-4'>
           <div>
             <p className='mb-1 text-xs font-semibold tracking-[0.22em] text-[#6f735f] uppercase'>
-              Hapgood Staff
+              {t.staffLabel}
             </p>
 
             <h1 className='text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl'>
-              Welcome, {loggedInEmployee.name}
+              {t.hello}, {loggedInEmployee.name}
             </h1>
           </div>
 
@@ -305,9 +1133,9 @@ function App() {
             type='button'
             onClick={logOut}
             disabled={submitting}
-            className='rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 shadow-sm transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50'
+            className='rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 shadow-sm transition hover:bg-stone-50 disabled:opacity-50'
           >
-            Sign Out
+            {t.signOut}
           </button>
         </header>
 
@@ -325,6 +1153,7 @@ function App() {
               {currentTime.toLocaleTimeString([], {
                 hour: 'numeric',
                 minute: '2-digit',
+                second: '2-digit',
               })}
             </p>
 
@@ -338,8 +1167,8 @@ function App() {
 
                 <p className='text-sm font-semibold'>
                   {activeEntry
-                    ? `Clocked in at ${formatTime(activeEntry.clock_in)}`
-                    : 'You are currently clocked out'}
+                    ? `${t.clockedInAt} ${formatTime(activeEntry.clock_in)}`
+                    : t.clockedOut}
                 </p>
               </div>
             </div>
@@ -350,20 +1179,16 @@ function App() {
               disabled={submitting}
               className={`mt-6 w-full max-w-md rounded-2xl px-6 py-4 text-lg font-bold shadow-lg transition focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60 ${
                 activeEntry
-                  ? 'bg-[#d8c6a2] text-[#2f352b] hover:bg-[#e2d1ae] focus:ring-[#d8c6a2]/30'
-                  : 'bg-white text-[#2f352b] hover:bg-stone-100 focus:ring-white/30'
+                  ? 'bg-[#d8c6a2] text-[#2f352b] hover:bg-[#e2d1ae]'
+                  : 'bg-white text-[#2f352b] hover:bg-stone-100'
               }`}
             >
-              {submitting
-                ? 'Saving...'
-                : activeEntry
-                  ? 'Clock Out'
-                  : 'Clock In'}
+              {submitting ? t.saving : activeEntry ? t.clockOut : t.clockIn}
             </button>
           </div>
         </section>
 
-        {errorMessage && (
+        {errorMessage && !selectedShift && (
           <p className='mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700'>
             {errorMessage}
           </p>
@@ -373,76 +1198,206 @@ function App() {
           <div className='mb-5 flex items-center justify-between gap-4'>
             <div>
               <h2 className='text-xl font-semibold text-stone-900'>
-                Recent Shifts
+                {t.recentShifts}
               </h2>
-
               <p className='mt-1 text-sm text-stone-500'>
-                Your 20 most recent time entries
+                {t.recentShiftsDescription}
               </p>
             </div>
 
             <button
               type='button'
-              onClick={() => loadEntries()}
+              onClick={() =>
+                Promise.all([loadEntries(), loadEmployeeCorrectionRequests()])
+              }
               disabled={loading || submitting}
-              className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50'
+              className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
             >
-              Refresh
+              {t.refresh}
             </button>
           </div>
 
           {loading ? (
             <div className='py-10 text-center text-sm text-stone-500'>
-              Loading entries...
+              {t.loadingEntries}
             </div>
           ) : entries.length === 0 ? (
             <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
-              <p className='font-medium text-stone-700'>No shifts yet</p>
-
+              <p className='font-medium text-stone-700'>{t.noShifts}</p>
               <p className='mt-1 text-sm text-stone-500'>
-                Your completed shifts will appear here.
+                {t.noShiftsDescription}
               </p>
             </div>
           ) : (
             <div className='divide-y divide-stone-200'>
-              {entries.map((entry) => (
-                <article
-                  className='flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between'
-                  key={entry.id}
-                >
-                  <div>
-                    <p className='font-semibold text-stone-900'>
-                      {formatDate(entry.clock_in)}
-                    </p>
+              {entries.map((entry) => {
+                const correction = getCorrectionForShift(entry.id)
 
-                    <p className='mt-1 text-sm text-stone-500'>
-                      {formatTime(entry.clock_in)}
-                      {' – '}
-                      {entry.clock_out ? formatTime(entry.clock_out) : 'Now'}
-                    </p>
-                  </div>
+                return (
+                  <article
+                    className='flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between'
+                    key={entry.id}
+                  >
+                    <div>
+                      <p className='font-semibold text-stone-900'>
+                        {formatDate(entry.clock_in)}
+                      </p>
 
-                  <div className='flex items-center justify-between gap-3 sm:justify-end'>
-                    {!entry.clock_out && (
-                      <span className='rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700'>
-                        Active
+                      <p className='mt-1 text-sm text-stone-500'>
+                        {formatTime(entry.clock_in)}
+                        {' – '}
+                        {entry.clock_out ? formatTime(entry.clock_out) : 'Now'}
+                      </p>
+                    </div>
+
+                    <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
+                      {!entry.clock_out && (
+                        <span className='rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700'>
+                          {t.active}
+                        </span>
+                      )}
+
+                      <span className='rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700'>
+                        {calculateDuration(entry.clock_in, entry.clock_out)}
                       </span>
-                    )}
 
-                    <span className='rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700'>
-                      {calculateDuration(entry.clock_in, entry.clock_out)}
-                    </span>
-                  </div>
-                </article>
-              ))}
+                      {entry.clock_out &&
+                        (correction ? (
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              correction.status === 'pending'
+                                ? 'bg-amber-100 text-amber-700'
+                                : correction.status === 'approved'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {correction.status === 'pending'
+                              ? t.correctionPending
+                              : correction.status === 'approved'
+                                ? t.correctionApproved
+                                : t.correctionRejected}
+                          </span>
+                        ) : (
+                          <button
+                            type='button'
+                            onClick={() => openCorrectionForm(entry)}
+                            className='rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-100'
+                          >
+                            {t.requestCorrection}
+                          </button>
+                        ))}
+                    </div>
+                  </article>
+                )
+              })}
             </div>
           )}
         </section>
 
         <footer className='py-6 text-center text-xs text-stone-500'>
-          Hapgood Employee Time Clock
+          {t.employeeFooter}
         </footer>
       </div>
+
+      {selectedShift && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-8'>
+          <div className='max-h-full w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8'>
+            <div className='mb-6 flex items-start justify-between gap-4'>
+              <div>
+                <p className='text-xs font-semibold tracking-[0.2em] text-[#6f735f] uppercase'>
+                  {t.shiftCorrection}
+                </p>
+
+                <h2 className='mt-1 text-2xl font-semibold text-stone-900'>
+                  {t.requestChange}
+                </h2>
+
+                <p className='mt-2 text-sm text-stone-500'>
+                  {t.managerApprovalNotice}
+                </p>
+              </div>
+
+              <button
+                type='button'
+                onClick={closeCorrectionForm}
+                disabled={submitting}
+                className='rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50 disabled:opacity-50'
+              >
+                {t.close}
+              </button>
+            </div>
+
+            <form onSubmit={submitCorrectionRequest} className='space-y-5'>
+              <div>
+                <label
+                  htmlFor='requested-clock-in'
+                  className='mb-2 block text-sm font-semibold text-stone-700'
+                >
+                  {t.correctClockIn}
+                </label>
+
+                <input
+                  id='requested-clock-in'
+                  type='datetime-local'
+                  value={requestedClockIn}
+                  onChange={(event) => setRequestedClockIn(event.target.value)}
+                  className='w-full rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-stone-900 outline-none focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15'
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor='requested-clock-out'
+                  className='mb-2 block text-sm font-semibold text-stone-700'
+                >
+                  {t.correctClockOut}
+                </label>
+
+                <input
+                  id='requested-clock-out'
+                  type='datetime-local'
+                  value={requestedClockOut}
+                  onChange={(event) => setRequestedClockOut(event.target.value)}
+                  className='w-full rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-stone-900 outline-none focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15'
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor='correction-reason'
+                  className='mb-2 block text-sm font-semibold text-stone-700'
+                >
+                  {t.reason}
+                </label>
+
+                <textarea
+                  id='correction-reason'
+                  rows='4'
+                  value={correctionReason}
+                  onChange={(event) => setCorrectionReason(event.target.value)}
+                  placeholder={t.reasonPlaceholder}
+                  className='w-full resize-none rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-stone-900 outline-none focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15'
+                />
+              </div>
+
+              {errorMessage && (
+                <p className='rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700'>
+                  {errorMessage}
+                </p>
+              )}
+
+              <button
+                type='submit'
+                disabled={submitting}
+                className='w-full rounded-xl bg-[#2f352b] px-5 py-3.5 font-semibold text-white transition hover:bg-[#252a22] disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                {submitting ? t.submitting : t.submitCorrection}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
