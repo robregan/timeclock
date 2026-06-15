@@ -268,17 +268,14 @@ Every push to the `main` branch triggers a new deployment.
 
 ## Roadmap
 
-- CSV payroll export
 - Manager-created manual time entries
 - Employee management screen
 - PIN reset workflow
 - Payroll-period presets
-- Break tracking
 - Manager audit history
 - Failed-login throttling
 - Stronger authentication for managers
 - Optional email notifications for correction requests
-- Installable Progressive Web App support
 
 ## Status
 
