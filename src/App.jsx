@@ -38,7 +38,6 @@ function formatDateTimeForInput(value) {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
-
 const translations = {
   en: {
     staffLabel: 'Hapgood Staff',
@@ -66,7 +65,8 @@ const translations = {
     requestCorrection: 'Request Correction',
     reportMissedShift: 'Report Missed Shift',
     missedShift: 'Missed Shift',
-    missedShiftDescription: 'Forgot to clock in or out for a whole shift? Submit a request for manager approval.',
+    missedShiftDescription:
+      'Forgot to clock in for a whole shift? Submit a request for manager approval.',
     correctionPending: 'Correction pending',
     correctionApproved: 'Correction approved',
     correctionRejected: 'Correction rejected',
@@ -93,9 +93,11 @@ const translations = {
       clockInFailed: 'Clock-in failed.',
       clockOutFailed: 'Clock-out failed.',
       correctionFields: 'Enter the corrected times and a short explanation.',
-      missedShiftFields: 'Enter the missed shift times and a short explanation.',
+      missedShiftFields:
+        'Enter the missed shift times and a short explanation.',
       invalidTimeOrder: 'Clock-out must be after clock-in.',
-      correctionPending: 'A correction request is already pending for this shift.',
+      correctionPending:
+        'A correction request is already pending for this shift.',
       correctionSubmitFailed: 'Could not submit correction request.',
       missedShiftSubmitFailed: 'Could not submit missed shift request.',
     },
@@ -126,7 +128,8 @@ const translations = {
     requestCorrection: 'Solicitar corrección',
     reportMissedShift: 'Reportar turno olvidado',
     missedShift: 'Turno olvidado',
-    missedShiftDescription: '¿Olvidaste marcar entrada o salida durante un turno completo? Envía una solicitud para aprobación del gerente.',
+    missedShiftDescription:
+      '¿Olvidaste marcar entrada durante un turno completo? Envía una solicitud para aprobación del gerente.',
     correctionPending: 'Corrección pendiente',
     correctionApproved: 'Corrección aprobada',
     correctionRejected: 'Corrección rechazada',
@@ -152,16 +155,14 @@ const translations = {
       alreadyClockedIn: 'Ya has marcado tu entrada.',
       clockInFailed: 'No se pudo marcar la entrada.',
       clockOutFailed: 'No se pudo marcar la salida.',
-      correctionFields:
-        'Ingresa las horas corregidas y una breve explicación.',
+      correctionFields: 'Ingresa las horas corregidas y una breve explicación.',
       missedShiftFields:
         'Ingresa las horas del turno olvidado y una breve explicación.',
       invalidTimeOrder:
         'La hora de salida debe ser posterior a la hora de entrada.',
       correctionPending:
         'Ya hay una solicitud de corrección pendiente para este turno.',
-      correctionSubmitFailed:
-        'No se pudo enviar la solicitud de corrección.',
+      correctionSubmitFailed: 'No se pudo enviar la solicitud de corrección.',
       missedShiftSubmitFailed:
         'No se pudo enviar la solicitud de turno olvidado.',
     },
@@ -642,9 +643,7 @@ function App() {
       p_request_id: requestId,
       p_decision: decision,
       p_manager_note:
-        activeManagerNoteId === requestId
-          ? managerNote.trim() || null
-          : null,
+        activeManagerNoteId === requestId ? managerNote.trim() || null : null,
     })
 
     if (error) {
@@ -758,10 +757,7 @@ function App() {
         <div className='mx-auto max-w-md'>
           {!isManagerRoute && (
             <div className='mb-6 flex justify-end'>
-              <LanguageToggle
-                language={language}
-                onChange={changeLanguage}
-              />
+              <LanguageToggle language={language} onChange={changeLanguage} />
             </div>
           )}
 
@@ -891,9 +887,7 @@ function App() {
                 Hours Summary
               </h1>
 
-              <p className='mt-2 text-sm text-stone-600'>
-                Manager dashboard
-              </p>
+              <p className='mt-2 text-sm text-stone-600'>Manager dashboard</p>
             </div>
 
             <button
@@ -908,9 +902,7 @@ function App() {
           <section className='mb-6 rounded-3xl bg-[#2f352b] p-6 text-white shadow-[0_24px_70px_rgba(48,53,43,0.22)] sm:p-8'>
             <p className='text-sm font-medium text-white/65'>Date range</p>
 
-            <h2 className='mt-1 text-2xl font-semibold'>
-              Custom Hours Report
-            </h2>
+            <h2 className='mt-1 text-2xl font-semibold'>Custom Hours Report</h2>
 
             <div className='mt-6 grid w-full min-w-0 max-w-full gap-4 sm:grid-cols-2'>
               <div className='w-full min-w-0 max-w-full'>
@@ -1003,7 +995,8 @@ function App() {
                   Pending Requests
                 </h2>
                 <p className='mt-1 text-sm text-stone-500'>
-                  Review corrections and missed shifts before changing payroll records.
+                  Review corrections and missed shifts before changing payroll
+                  records.
                 </p>
               </div>
 
@@ -1191,9 +1184,7 @@ function App() {
               </div>
             ) : managerTotals.length === 0 ? (
               <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
-                <p className='font-medium text-stone-700'>
-                  No employees found
-                </p>
+                <p className='font-medium text-stone-700'>No employees found</p>
               </div>
             ) : (
               <div className='space-y-3'>
@@ -1396,11 +1387,7 @@ function App() {
                   : 'bg-white text-[#2f352b] hover:bg-stone-100'
               }`}
             >
-              {submitting
-                ? t.saving
-                : activeEntry
-                  ? t.clockOut
-                  : t.clockIn}
+              {submitting ? t.saving : activeEntry ? t.clockOut : t.clockIn}
             </button>
           </div>
         </section>
@@ -1447,10 +1434,7 @@ function App() {
             <button
               type='button'
               onClick={() =>
-                Promise.all([
-                  loadEntries(),
-                  loadEmployeeCorrectionRequests(),
-                ])
+                Promise.all([loadEntries(), loadEmployeeCorrectionRequests()])
               }
               disabled={loading || submitting}
               className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
@@ -1548,11 +1532,15 @@ function App() {
             <div className='mb-6 flex items-start justify-between gap-4'>
               <div>
                 <p className='text-xs font-semibold tracking-[0.2em] text-[#6f735f] uppercase'>
-                  {requestMode === 'missing' ? t.missedShift : t.shiftCorrection}
+                  {requestMode === 'missing'
+                    ? t.missedShift
+                    : t.shiftCorrection}
                 </p>
 
                 <h2 className='mt-1 text-2xl font-semibold text-stone-900'>
-                  {requestMode === 'missing' ? t.reportMissedShift : t.requestChange}
+                  {requestMode === 'missing'
+                    ? t.reportMissedShift
+                    : t.requestChange}
                 </h2>
 
                 <p className='mt-2 text-sm text-stone-500'>
@@ -1583,9 +1571,7 @@ function App() {
                   id='requested-clock-in'
                   type='datetime-local'
                   value={requestedClockIn}
-                  onChange={(event) =>
-                    setRequestedClockIn(event.target.value)
-                  }
+                  onChange={(event) => setRequestedClockIn(event.target.value)}
                   className='w-full rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-stone-900 outline-none focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15'
                 />
               </div>
@@ -1602,9 +1588,7 @@ function App() {
                   id='requested-clock-out'
                   type='datetime-local'
                   value={requestedClockOut}
-                  onChange={(event) =>
-                    setRequestedClockOut(event.target.value)
-                  }
+                  onChange={(event) => setRequestedClockOut(event.target.value)}
                   className='w-full rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-stone-900 outline-none focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15'
                 />
               </div>
@@ -1621,9 +1605,7 @@ function App() {
                   id='correction-reason'
                   rows='4'
                   value={correctionReason}
-                  onChange={(event) =>
-                    setCorrectionReason(event.target.value)
-                  }
+                  onChange={(event) => setCorrectionReason(event.target.value)}
                   placeholder={t.reasonPlaceholder}
                   className='w-full resize-none rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-stone-900 outline-none focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15'
                 />
@@ -1640,9 +1622,7 @@ function App() {
                 disabled={submitting}
                 className='w-full rounded-xl bg-[#2f352b] px-5 py-3.5 font-semibold text-white transition hover:bg-[#252a22] disabled:cursor-not-allowed disabled:opacity-50'
               >
-                {submitting
-                  ? t.submitting
-                  : t.submitCorrection}
+                {submitting ? t.submitting : t.submitCorrection}
               </button>
             </form>
           </div>
