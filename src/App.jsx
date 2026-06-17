@@ -927,7 +927,7 @@ function App() {
                   htmlFor='end-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
                 >
-                  End date
+                  End date (inclusive)
                 </label>
 
                 <input
@@ -957,7 +957,7 @@ function App() {
                 disabled={loading}
                 className='rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/15 transition hover:bg-white/15 disabled:opacity-50'
               >
-                Select This Week
+                Select Current Week
               </button>
             </div>
           </section>
