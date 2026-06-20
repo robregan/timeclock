@@ -66,7 +66,7 @@ const translations = {
     reportMissedShift: 'Report Missed Shift',
     missedShift: 'Missed Shift',
     missedShiftDescription:
-      'Forgot to clock in for a whole shift? Submit a request for manager approval.',
+      'Forgot to clock in or out for a whole shift? Submit a request for manager approval.',
     correctionPending: 'Correction pending',
     correctionApproved: 'Correction approved',
     correctionRejected: 'Correction rejected',
@@ -98,6 +98,10 @@ const translations = {
       invalidTimeOrder: 'Clock-out must be after clock-in.',
       correctionPending:
         'A correction request is already pending for this shift.',
+      overlapsExistingShift:
+        'This time overlaps an existing shift. Please check the times or ask a manager.',
+      overlapsPendingRequest:
+        'A pending request already overlaps this time. Please wait for a manager to review it.',
       correctionSubmitFailed: 'Could not submit correction request.',
       missedShiftSubmitFailed: 'Could not submit missed shift request.',
     },
@@ -129,7 +133,7 @@ const translations = {
     reportMissedShift: 'Reportar turno olvidado',
     missedShift: 'Turno olvidado',
     missedShiftDescription:
-      '¿Olvidaste marcar entrada durante un turno completo? Envía una solicitud para aprobación del gerente.',
+      '¿Olvidaste marcar entrada o salida durante un turno completo? Envía una solicitud para aprobación del gerente.',
     correctionPending: 'Corrección pendiente',
     correctionApproved: 'Corrección aprobada',
     correctionRejected: 'Corrección rechazada',
@@ -162,6 +166,10 @@ const translations = {
         'La hora de salida debe ser posterior a la hora de entrada.',
       correctionPending:
         'Ya hay una solicitud de corrección pendiente para este turno.',
+      overlapsExistingShift:
+        'Este horario se superpone con un turno existente. Revisa las horas o habla con un gerente.',
+      overlapsPendingRequest:
+        'Ya hay una solicitud pendiente que se superpone con este horario. Espera a que un gerente la revise.',
       correctionSubmitFailed: 'No se pudo enviar la solicitud de corrección.',
       missedShiftSubmitFailed:
         'No se pudo enviar la solicitud de turno olvidado.',
@@ -556,6 +564,50 @@ function App() {
     setErrorMessage('')
   }
 
+  function getFriendlyRequestError(error, fallbackMessage) {
+    const message = error?.message ?? ''
+
+    if (
+      message.includes('overlaps an existing shift') ||
+      message.includes('overlaps another existing shift') ||
+      message.includes('no_overlapping_completed_shifts') ||
+      message.includes('conflicting key value violates exclusion constraint')
+    ) {
+      return t.errors.overlapsExistingShift
+    }
+
+    if (
+      message.includes('pending request already overlaps') ||
+      message.includes('A pending request already overlaps')
+    ) {
+      return t.errors.overlapsPendingRequest
+    }
+
+    if (message.includes('already pending')) {
+      return t.errors.correctionPending
+    }
+
+    if (message.includes('Clock-out must be after clock-in')) {
+      return t.errors.invalidTimeOrder
+    }
+
+    return fallbackMessage
+  }
+
+  function getFriendlyManagerReviewError(error) {
+    const message = error?.message ?? ''
+
+    if (
+      message.includes('overlap') ||
+      message.includes('no_overlapping_completed_shifts') ||
+      message.includes('conflicting key value violates exclusion constraint')
+    ) {
+      return 'This approval would create overlapping shifts. Reject this request or remove the conflicting shift first.'
+    }
+
+    return 'Could not review request.'
+  }
+
   async function submitCorrectionRequest(event) {
     event.preventDefault()
 
@@ -612,15 +664,14 @@ function App() {
     if (error) {
       console.error(error)
 
-      if (error.message.includes('already pending')) {
-        setErrorMessage(t.errors.correctionPending)
-      } else {
-        setErrorMessage(
+      setErrorMessage(
+        getFriendlyRequestError(
+          error,
           requestMode === 'missing'
             ? t.errors.missedShiftSubmitFailed
             : t.errors.correctionSubmitFailed,
-        )
-      }
+        ),
+      )
     } else {
       await loadEmployeeCorrectionRequests()
       closeCorrectionForm()
@@ -648,7 +699,7 @@ function App() {
 
     if (error) {
       console.error(error)
-      setErrorMessage('Could not review correction request.')
+      setErrorMessage(getFriendlyManagerReviewError(error))
     } else {
       setManagerNote('')
       setActiveManagerNoteId(null)
@@ -927,7 +978,7 @@ function App() {
                   htmlFor='end-date'
                   className='mb-2 block text-sm font-semibold text-white/80'
                 >
-                  End date (inclusive)
+                  End date
                 </label>
 
                 <input
@@ -957,7 +1008,7 @@ function App() {
                 disabled={loading}
                 className='rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/15 transition hover:bg-white/15 disabled:opacity-50'
               >
-                Select Current Week
+                Select This Week
               </button>
             </div>
           </section>
