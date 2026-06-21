@@ -65,7 +65,6 @@ The manager route is intentionally separate from the employee interface.
 - Supabase
 - PostgreSQL
 - JavaScript
-- Netlify
 
 ## Project Structure
 
