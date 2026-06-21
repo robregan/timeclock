@@ -66,7 +66,7 @@ const translations = {
     reportMissedShift: 'Report Missed Shift',
     missedShift: 'Missed Shift',
     missedShiftDescription:
-      'Forgot to clock in or out for a whole shift? Submit a request for manager approval.',
+      'Forgot to clock in for a whole shift? Submit a request for manager approval.',
     correctionPending: 'Correction pending',
     correctionApproved: 'Correction approved',
     correctionRejected: 'Correction rejected',
@@ -133,7 +133,7 @@ const translations = {
     reportMissedShift: 'Reportar turno olvidado',
     missedShift: 'Turno olvidado',
     missedShiftDescription:
-      '¿Olvidaste marcar entrada o salida durante un turno completo? Envía una solicitud para aprobación del gerente.',
+      '¿Olvidaste marcar entrada durante un turno completo? Envía una solicitud para aprobación del gerente.',
     correctionPending: 'Corrección pendiente',
     correctionApproved: 'Corrección aprobada',
     correctionRejected: 'Corrección rechazada',
@@ -779,6 +779,188 @@ function App() {
     return `${hours}h ${minutes}m`
   }
 
+  function escapeCsvValue(value) {
+    if (value === null || value === undefined) {
+      return ''
+    }
+
+    const stringValue = String(value)
+
+    if (
+      stringValue.includes(',') ||
+      stringValue.includes('"') ||
+      stringValue.includes('\n')
+    ) {
+      return `"${stringValue.replace(/"/g, '""')}"`
+    }
+
+    return stringValue
+  }
+
+  function formatCsvDateTime(value) {
+    if (!value) {
+      return ''
+    }
+
+    return new Date(value).toLocaleString([], {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  }
+
+  function exportPayrollCsv() {
+    if (!managerShifts.length) {
+      setErrorMessage(
+        'No shift details are available to export for this date range.',
+      )
+      return
+    }
+
+    const headers = [
+      'Employee',
+      'Date',
+      'Clock In',
+      'Clock Out',
+      'Duration',
+      'Status',
+      'Edited',
+      'Edited At',
+      'Edit Reason',
+    ]
+
+    const rows = managerShifts.map((shift) => ({
+      Employee: shift.employee_name,
+      Date: new Date(shift.clock_in).toLocaleDateString([], {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }),
+      'Clock In': formatCsvDateTime(shift.clock_in),
+      'Clock Out': shift.clock_out ? formatCsvDateTime(shift.clock_out) : '',
+      Duration: calculateDuration(shift.clock_in, shift.clock_out),
+      Status: shift.clock_out ? 'Completed' : 'Active',
+      Edited: shift.edited_at ? 'Yes' : 'No',
+      'Edited At': shift.edited_at ? formatCsvDateTime(shift.edited_at) : '',
+      'Edit Reason': shift.edit_reason ?? '',
+    }))
+
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) =>
+        headers.map((header) => escapeCsvValue(row[header])).join(','),
+      ),
+    ].join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const safeStart = startDate || 'start'
+    const safeEnd = endDate || 'end'
+
+    link.href = url
+    link.download = `hapgood-hours-${safeStart}-to-${safeEnd}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  function exportPayrollTxt() {
+    if (!managerTotals.length) {
+      setErrorMessage(
+        'No employee totals are available to export for this date range.',
+      )
+      return
+    }
+
+    const safeStart = startDate || 'start'
+    const safeEnd = endDate || 'end'
+    const generatedAt = new Date().toLocaleString()
+
+    const lines = [
+      'HAPGOOD HOURS REPORT',
+      `Date range: ${safeStart} to ${safeEnd}`,
+      `Generated: ${generatedAt}`,
+      '',
+      `Total team hours: ${formatSeconds(totalTeamSeconds)}`,
+      `Currently clocked in: ${currentlyClockedInCount}`,
+      '',
+      '========================================',
+      '',
+    ]
+
+    managerTotals.forEach((employee) => {
+      const employeeShifts = managerShifts
+        .filter((shift) => shift.employee_id === employee.employee_id)
+        .sort((a, b) => new Date(a.clock_in) - new Date(b.clock_in))
+
+      lines.push(employee.employee_name)
+      lines.push(`Total: ${formatSeconds(employee.total_seconds)}`)
+      lines.push(
+        `Shifts: ${employee.shift_count} ${
+          Number(employee.shift_count) === 1 ? 'shift' : 'shifts'
+        }`,
+      )
+
+      if (employee.currently_clocked_in) {
+        lines.push('Status: Currently clocked in')
+      }
+
+      lines.push('')
+
+      if (employeeShifts.length === 0) {
+        lines.push('  No shifts in this date range.')
+      } else {
+        employeeShifts.forEach((shift) => {
+          const date = new Date(shift.clock_in).toLocaleDateString([], {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })
+          const start = formatTime(shift.clock_in)
+          const end = shift.clock_out ? formatTime(shift.clock_out) : 'Now'
+          const duration = calculateDuration(shift.clock_in, shift.clock_out)
+
+          lines.push(`  - ${date}`)
+          lines.push(`    ${start} – ${end}`)
+          lines.push(`    Duration: ${duration}`)
+
+          if (!shift.clock_out) {
+            lines.push('    Status: Active')
+          }
+
+          if (shift.edited_at) {
+            lines.push(`    Edited: Yes`)
+            lines.push(
+              `    Edit reason: ${shift.edit_reason || 'Not provided'}`,
+            )
+          }
+
+          lines.push('')
+        })
+      }
+
+      lines.push('----------------------------------------')
+      lines.push('')
+    })
+
+    const report = lines.join('\n')
+    const blob = new Blob([report], { type: 'text/plain;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+
+    link.href = url
+    link.download = `hapgood-hours-${safeStart}-to-${safeEnd}.txt`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   function selectCurrentWeek() {
     const beginning = getStartOfWeek(new Date())
 
@@ -992,7 +1174,7 @@ function App() {
               </div>
             </div>
 
-            <div className='mt-5 flex flex-col gap-3 sm:flex-row'>
+            <div className='mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap'>
               <button
                 type='button'
                 onClick={() => loadManagerTotals()}
@@ -1010,6 +1192,24 @@ function App() {
               >
                 Select This Week
               </button> */}
+
+              {/* <button
+                type='button'
+                onClick={exportPayrollCsv}
+                disabled={loading || managerShifts.length === 0}
+                className='rounded-xl bg-[#d8c6a2] px-5 py-3 text-sm font-semibold text-[#2f352b] transition hover:bg-[#e2d1ae] disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                Export CSV
+              </button> */}
+
+              <button
+                type='button'
+                onClick={exportPayrollTxt}
+                disabled={loading || managerTotals.length === 0}
+                className='rounded-xl bg-[#d8c6a2] px-5 py-3 text-sm font-semibold text-[#2f352b] transition hover:bg-[#e2d1ae] disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                Download Report
+              </button>
             </div>
           </section>
 
