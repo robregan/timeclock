@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 
+const AUTO_LOGOUT_MINUTES = 0.5
+const AUTO_LOGOUT_MS = AUTO_LOGOUT_MINUTES * 60 * 1000
+
 function getStartOfWeek(date) {
   const result = new Date(date)
   const day = result.getDay()
@@ -57,7 +60,6 @@ function formatDateTime(value) {
     hour12: true,
   })
 }
-
 
 const translations = {
   en: {
@@ -284,6 +286,54 @@ function App() {
     return () => window.clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    if (!loggedInEmployee) {
+      return undefined
+    }
+
+    let logoutTimerId
+
+    function resetLogoutTimer() {
+      window.clearTimeout(logoutTimerId)
+
+      logoutTimerId = window.setTimeout(() => {
+        logOut()
+      }, AUTO_LOGOUT_MS)
+    }
+
+    const activityEvents = [
+      'click',
+      'touchstart',
+      'touchmove',
+      'pointerdown',
+      'pointermove',
+      'keydown',
+      'scroll',
+      'wheel',
+      'visibilitychange',
+    ]
+
+    resetLogoutTimer()
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetLogoutTimer)
+    })
+
+    return () => {
+      window.clearTimeout(logoutTimerId)
+
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetLogoutTimer)
+      })
+    }
+  }, [loggedInEmployee])
+
+  useEffect(() => {
+    if (!loggedInEmployee && pin.length === 4 && !submitting && !loading) {
+      logIn(null, pin)
+    }
+  }, [pin, loggedInEmployee, submitting, loading])
+
   function changeLanguage(nextLanguage) {
     setLanguage(nextLanguage)
     localStorage.setItem('employeeLanguage', nextLanguage)
@@ -339,10 +389,12 @@ function App() {
     setLoading(false)
   }
 
-  async function logIn(event) {
-    event.preventDefault()
+  async function logIn(event = null, pinOverride = pin) {
+    event?.preventDefault()
 
-    if (!selectedEmployeeId || pin.length !== 4) {
+    const pinToUse = pinOverride
+
+    if (!selectedEmployeeId || pinToUse.length !== 4) {
       setErrorMessage(loginT.errors.loginFields)
       return
     }
@@ -352,12 +404,13 @@ function App() {
 
     const { data, error } = await supabase.rpc('verify_employee_pin', {
       p_employee_id: selectedEmployeeId,
-      p_pin: pin,
+      p_pin: pinToUse,
     })
 
     if (error || data !== true) {
       console.error(error)
       setErrorMessage(loginT.errors.incorrectPin)
+      setPin('')
       setSubmitting(false)
       return
     }
@@ -366,18 +419,21 @@ function App() {
 
     if (!employee) {
       setErrorMessage(loginT.errors.employeeNotFound)
+      setPin('')
       setSubmitting(false)
       return
     }
 
     if (isManagerRoute && employee.role !== 'manager') {
       setErrorMessage('Manager access required.')
+      setPin('')
       setSubmitting(false)
       return
     }
 
     if (!isManagerRoute && employee.can_clock === false) {
       setErrorMessage(loginT.errors.employeeNotFound)
+      setPin('')
       setSubmitting(false)
       return
     }
@@ -386,13 +442,13 @@ function App() {
 
     if (isManagerRoute) {
       await Promise.all([
-        loadManagerTotals(employee.id, pin),
-        loadPendingCorrections(employee.id, pin),
+        loadManagerTotals(employee.id, pinToUse),
+        loadPendingCorrections(employee.id, pinToUse),
       ])
     } else {
       await Promise.all([
-        loadEntries(employee.id, pin),
-        loadEmployeeCorrectionRequests(employee.id, pin),
+        loadEntries(employee.id, pinToUse),
+        loadEmployeeCorrectionRequests(employee.id, pinToUse),
       ])
     }
 
@@ -1159,13 +1215,11 @@ function App() {
                 </div>
               </div>
 
-              <button
-                type='submit'
-                disabled={loading || submitting || pin.length !== 4}
-                className='w-full rounded-xl bg-[#2f352b] px-5 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-[#252a22] focus:outline-none focus:ring-4 focus:ring-[#2f352b]/20 disabled:cursor-not-allowed disabled:opacity-50'
-              >
-                {submitting ? loginT.checking : loginT.continue}
-              </button>
+              {submitting && (
+                <p className='text-center text-sm font-semibold text-stone-600'>
+                  {loginT.checking}
+                </p>
+              )}
             </div>
 
             {errorMessage && (
@@ -1355,8 +1409,7 @@ function App() {
                           </span>
                         </div>
                         <p className='mt-1 text-sm text-stone-500'>
-                          Submitted{' '}
-                          {formatDateTime(request.created_at)}
+                          Submitted {formatDateTime(request.created_at)}
                         </p>
                       </div>
 
@@ -1372,12 +1425,10 @@ function App() {
                             Original
                           </p>
                           <p className='mt-2 text-sm font-medium text-stone-800'>
-                            In:{' '}
-                            {formatDateTime(request.original_clock_in)}
+                            In: {formatDateTime(request.original_clock_in)}
                           </p>
                           <p className='mt-1 text-sm font-medium text-stone-800'>
-                            Out:{' '}
-                            {formatDateTime(request.original_clock_out)}
+                            Out: {formatDateTime(request.original_clock_out)}
                           </p>
                         </div>
                       )}
@@ -1389,12 +1440,10 @@ function App() {
                             : 'Requested'}
                         </p>
                         <p className='mt-2 text-sm font-medium text-stone-800'>
-                          In:{' '}
-                          {formatDateTime(request.requested_clock_in)}
+                          In: {formatDateTime(request.requested_clock_in)}
                         </p>
                         <p className='mt-1 text-sm font-medium text-stone-800'>
-                          Out:{' '}
-                          {formatDateTime(request.requested_clock_out)}
+                          Out: {formatDateTime(request.requested_clock_out)}
                         </p>
                       </div>
                     </div>
