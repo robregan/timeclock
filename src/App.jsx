@@ -38,6 +38,27 @@ function formatDateTimeForInput(value) {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
+function formatTwelveHourTime(value, options = {}) {
+  return new Date(value).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    ...options,
+  })
+}
+
+function formatDateTime(value) {
+  return new Date(value).toLocaleString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+
 const translations = {
   en: {
     staffLabel: 'Hapgood Staff',
@@ -741,10 +762,7 @@ function App() {
   }
 
   function formatTime(value) {
-    return new Date(value).toLocaleTimeString([], {
-      hour: 'numeric',
-      minute: '2-digit',
-    })
+    return formatTwelveHourTime(value)
   }
 
   function formatDate(value) {
@@ -802,13 +820,7 @@ function App() {
       return ''
     }
 
-    return new Date(value).toLocaleString([], {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: 'numeric',
-      minute: '2-digit',
-    })
+    return formatDateTime(value)
   }
 
   function exportPayrollCsv() {
@@ -878,7 +890,7 @@ function App() {
 
     const safeStart = startDate || 'start'
     const safeEnd = endDate || 'end'
-    const generatedAt = new Date().toLocaleString()
+    const generatedAt = formatDateTime(new Date())
 
     const lines = [
       'HAPGOOD HOURS REPORT',
@@ -1283,7 +1295,7 @@ function App() {
                         </div>
                         <p className='mt-1 text-sm text-stone-500'>
                           Submitted{' '}
-                          {new Date(request.created_at).toLocaleString()}
+                          {formatDateTime(request.created_at)}
                         </p>
                       </div>
 
@@ -1300,15 +1312,11 @@ function App() {
                           </p>
                           <p className='mt-2 text-sm font-medium text-stone-800'>
                             In:{' '}
-                            {new Date(
-                              request.original_clock_in,
-                            ).toLocaleString()}
+                            {formatDateTime(request.original_clock_in)}
                           </p>
                           <p className='mt-1 text-sm font-medium text-stone-800'>
                             Out:{' '}
-                            {new Date(
-                              request.original_clock_out,
-                            ).toLocaleString()}
+                            {formatDateTime(request.original_clock_out)}
                           </p>
                         </div>
                       )}
@@ -1321,15 +1329,11 @@ function App() {
                         </p>
                         <p className='mt-2 text-sm font-medium text-stone-800'>
                           In:{' '}
-                          {new Date(
-                            request.requested_clock_in,
-                          ).toLocaleString()}
+                          {formatDateTime(request.requested_clock_in)}
                         </p>
                         <p className='mt-1 text-sm font-medium text-stone-800'>
                           Out:{' '}
-                          {new Date(
-                            request.requested_clock_out,
-                          ).toLocaleString()}
+                          {formatDateTime(request.requested_clock_out)}
                         </p>
                       </div>
                     </div>
@@ -1605,11 +1609,7 @@ function App() {
             </p>
 
             <p className='mt-2 text-5xl font-semibold tracking-tight sm:text-6xl'>
-              {currentTime.toLocaleTimeString([], {
-                hour: 'numeric',
-                minute: '2-digit',
-                second: '2-digit',
-              })}
+              {formatTwelveHourTime(currentTime)}
             </p>
 
             <div className='mx-auto mt-6 max-w-md rounded-2xl bg-white/8 px-5 py-4 ring-1 ring-white/10'>
