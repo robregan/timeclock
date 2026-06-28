@@ -289,6 +289,30 @@ function App() {
     localStorage.setItem('employeeLanguage', nextLanguage)
   }
 
+  function addPinDigit(digit) {
+    if (submitting) {
+      return
+    }
+
+    setPin((currentPin) => `${currentPin}${digit}`.slice(0, 4))
+  }
+
+  function removePinDigit() {
+    if (submitting) {
+      return
+    }
+
+    setPin((currentPin) => currentPin.slice(0, -1))
+  }
+
+  function clearPin() {
+    if (submitting) {
+      return
+    }
+
+    setPin('')
+  }
+
   async function loadEmployees() {
     setLoading(true)
     setErrorMessage('')
@@ -1074,28 +1098,65 @@ function App() {
               )}
 
               <div>
-                <label
-                  className='mb-2 block text-sm font-semibold text-stone-700'
-                  htmlFor='pin'
-                >
+                <p className='mb-2 block text-sm font-semibold text-stone-700'>
                   {loginT.pin}
-                </label>
+                </p>
 
-                <input
-                  id='pin'
-                  type='password'
-                  inputMode='numeric'
-                  pattern='[0-9]{4}'
-                  maxLength='4'
-                  value={pin}
-                  onChange={(event) =>
-                    setPin(event.target.value.replace(/\D/g, '').slice(0, 4))
-                  }
-                  autoComplete='off'
-                  disabled={submitting}
-                  placeholder='••••'
-                  className='w-full rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-center text-2xl tracking-[0.6em] text-stone-900 outline-none transition placeholder:tracking-[0.3em] focus:border-[#68785b] focus:ring-4 focus:ring-[#68785b]/15 disabled:cursor-not-allowed disabled:opacity-60'
-                />
+                <div
+                  className='mb-4 flex justify-center gap-3 rounded-xl border border-stone-300 bg-stone-50 px-4 py-4'
+                  aria-label='PIN entry'
+                >
+                  {[0, 1, 2, 3].map((index) => (
+                    <span
+                      key={index}
+                      className={`h-4 w-4 rounded-full ${
+                        pin.length > index ? 'bg-[#2f352b]' : 'bg-stone-300'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <div className='mx-auto grid max-w-xs grid-cols-3 gap-4'>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+                    <button
+                      key={digit}
+                      type='button'
+                      onClick={() => addPinDigit(String(digit))}
+                      disabled={submitting || pin.length >= 4}
+                      className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-stone-300 bg-white text-2xl font-semibold text-stone-900 shadow-sm transition hover:bg-stone-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
+                    >
+                      {digit}
+                    </button>
+                  ))}
+
+                  <button
+                    type='button'
+                    onClick={clearPin}
+                    disabled={submitting || pin.length === 0}
+                    className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-stone-300 bg-stone-50 text-xs font-semibold text-stone-700 shadow-sm transition hover:bg-stone-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
+                  >
+                    Clear
+                  </button>
+
+                  <button
+                    type='button'
+                    onClick={() => addPinDigit('0')}
+                    disabled={submitting || pin.length >= 4}
+                    className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-stone-300 bg-white text-2xl font-semibold text-stone-900 shadow-sm transition hover:bg-stone-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
+                  >
+                    0
+                  </button>
+
+                  <button
+                    type='button'
+                    onClick={removePinDigit}
+                    disabled={submitting || pin.length === 0}
+                    className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-stone-300 bg-stone-50 text-xs font-semibold text-stone-700 shadow-sm transition hover:bg-stone-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
+                    aria-label='Delete last PIN digit'
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
 
               <button
