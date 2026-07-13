@@ -40,13 +40,10 @@ The manager route is intentionally separate from the employee interface.
 
 - Separate hidden manager route at `/manager`
 - Manager login is separate from the employee dropdown
-- English-only manager interface
-- Manager account cannot clock in or out
 - View total team hours
 - View totals for each employee
 - See who is currently clocked in
 - Select a custom report date range
-- Quick-select the current week
 - Review pending correction requests
 - Review pending missed shift requests
 - Compare original and requested shift times for corrections
