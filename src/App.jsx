@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 
-const AUTO_LOGOUT_MINUTES = 0.5
+const AUTO_LOGOUT_MINUTES = 5
 const AUTO_LOGOUT_MS = AUTO_LOGOUT_MINUTES * 60 * 1000
 
 function getStartOfWeek(date) {
@@ -61,11 +61,12 @@ function formatDateTime(value) {
   })
 }
 
+
 const translations = {
   en: {
     staffLabel: 'Hapgood Staff',
-    employeeTimeClock: 'Employee Time Clock',
-    loginInstructions: 'Select your name and enter your PIN to continue.',
+    employeeTimeClock: 'Time Clock',
+    loginInstructions: 'Choose your name, then enter your PIN.',
     employee: 'Employee',
     pin: '4-digit PIN',
     checking: 'Checking...',
@@ -79,6 +80,9 @@ const translations = {
     clockedInAt: 'Clocked in at',
     recentShifts: 'Recent Shifts',
     recentShiftsDescription: 'Your 20 most recent time entries',
+    showRecentShifts: 'Show Recent Shifts',
+    hideRecentShifts: 'Hide Recent Shifts',
+    recentShiftsHidden: 'Recent shifts are hidden by default to keep the clock screen simple.',
     refresh: 'Refresh',
     loadingEntries: 'Loading entries...',
     noShifts: 'No shifts yet',
@@ -131,8 +135,8 @@ const translations = {
   },
   es: {
     staffLabel: 'Personal de Hapgood',
-    employeeTimeClock: 'Reloj de empleados',
-    loginInstructions: 'Selecciona tu nombre e ingresa tu PIN para continuar.',
+    employeeTimeClock: 'Reloj',
+    loginInstructions: 'Selecciona tu nombre e ingresa tu PIN.',
     employee: 'Empleado',
     pin: 'PIN de 4 dígitos',
     checking: 'Verificando...',
@@ -146,6 +150,9 @@ const translations = {
     clockedInAt: 'Entrada registrada a las',
     recentShifts: 'Turnos recientes',
     recentShiftsDescription: 'Tus 20 registros de tiempo más recientes',
+    showRecentShifts: 'Mostrar turnos recientes',
+    hideRecentShifts: 'Ocultar turnos recientes',
+    recentShiftsHidden: 'Los turnos recientes están ocultos para mantener esta pantalla simple.',
     refresh: 'Actualizar',
     loadingEntries: 'Cargando registros...',
     noShifts: 'Aún no hay turnos',
@@ -246,6 +253,7 @@ function App() {
   const [managerTotals, setManagerTotals] = useState([])
   const [managerShifts, setManagerShifts] = useState([])
   const [expandedEmployeeId, setExpandedEmployeeId] = useState(null)
+  const [showRecentShifts, setShowRecentShifts] = useState(false)
   const [correctionRequests, setCorrectionRequests] = useState([])
   const [pendingCorrections, setPendingCorrections] = useState([])
 
@@ -329,7 +337,12 @@ function App() {
   }, [loggedInEmployee])
 
   useEffect(() => {
-    if (!loggedInEmployee && pin.length === 4 && !submitting && !loading) {
+    if (
+      !loggedInEmployee &&
+      pin.length === 4 &&
+      !submitting &&
+      !loading
+    ) {
       logIn(null, pin)
     }
   }, [pin, loggedInEmployee, submitting, loading])
@@ -439,6 +452,7 @@ function App() {
     }
 
     setLoggedInEmployee(employee)
+    setShowRecentShifts(false)
 
     if (isManagerRoute) {
       await Promise.all([
@@ -836,6 +850,7 @@ function App() {
     setManagerTotals([])
     setManagerShifts([])
     setExpandedEmployeeId(null)
+    setShowRecentShifts(false)
     setErrorMessage('')
     setStartDate(formatDateForInput(beginning))
     setEndDate(formatDateForInput(addDays(beginning, 6)))
@@ -1409,7 +1424,8 @@ function App() {
                           </span>
                         </div>
                         <p className='mt-1 text-sm text-stone-500'>
-                          Submitted {formatDateTime(request.created_at)}
+                          Submitted{' '}
+                          {formatDateTime(request.created_at)}
                         </p>
                       </div>
 
@@ -1425,10 +1441,12 @@ function App() {
                             Original
                           </p>
                           <p className='mt-2 text-sm font-medium text-stone-800'>
-                            In: {formatDateTime(request.original_clock_in)}
+                            In:{' '}
+                            {formatDateTime(request.original_clock_in)}
                           </p>
                           <p className='mt-1 text-sm font-medium text-stone-800'>
-                            Out: {formatDateTime(request.original_clock_out)}
+                            Out:{' '}
+                            {formatDateTime(request.original_clock_out)}
                           </p>
                         </div>
                       )}
@@ -1440,10 +1458,12 @@ function App() {
                             : 'Requested'}
                         </p>
                         <p className='mt-2 text-sm font-medium text-stone-800'>
-                          In: {formatDateTime(request.requested_clock_in)}
+                          In:{' '}
+                          {formatDateTime(request.requested_clock_in)}
                         </p>
                         <p className='mt-1 text-sm font-medium text-stone-800'>
-                          Out: {formatDateTime(request.requested_clock_out)}
+                          Out:{' '}
+                          {formatDateTime(request.requested_clock_out)}
                         </p>
                       </div>
                     </div>
@@ -1782,102 +1802,127 @@ function App() {
         </section>
 
         <section className='rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_16px_50px_rgba(67,62,51,0.08)] sm:p-7'>
-          <div className='mb-5 flex items-center justify-between gap-4'>
+          <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
             <div>
-              <h2 className='text-xl font-semibold text-stone-900'>
+              <h2 className='text-lg font-semibold text-stone-900'>
                 {t.recentShifts}
               </h2>
-              <p className='mt-1 text-sm text-stone-500'>
-                {t.recentShiftsDescription}
+              <p className='mt-1 text-sm leading-6 text-stone-500'>
+                {showRecentShifts
+                  ? t.recentShiftsDescription
+                  : t.recentShiftsHidden}
               </p>
             </div>
 
             <button
               type='button'
-              onClick={() =>
-                Promise.all([loadEntries(), loadEmployeeCorrectionRequests()])
-              }
+              onClick={() => setShowRecentShifts((current) => !current)}
               disabled={loading || submitting}
-              className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
+              className='rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
             >
-              {t.refresh}
+              {showRecentShifts ? t.hideRecentShifts : t.showRecentShifts}
             </button>
           </div>
 
-          {loading ? (
-            <div className='py-10 text-center text-sm text-stone-500'>
-              {t.loadingEntries}
-            </div>
-          ) : entries.length === 0 ? (
-            <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
-              <p className='font-medium text-stone-700'>{t.noShifts}</p>
-              <p className='mt-1 text-sm text-stone-500'>
-                {t.noShiftsDescription}
-              </p>
-            </div>
-          ) : (
-            <div className='divide-y divide-stone-200'>
-              {entries.map((entry) => {
-                const correction = getCorrectionForShift(entry.id)
+          {showRecentShifts && (
+            <div className='mt-5'>
+              <div className='mb-5 flex justify-end'>
+                <button
+                  type='button'
+                  onClick={() =>
+                    Promise.all([
+                      loadEntries(),
+                      loadEmployeeCorrectionRequests(),
+                    ])
+                  }
+                  disabled={loading || submitting}
+                  className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
+                >
+                  {t.refresh}
+                </button>
+              </div>
 
-                return (
-                  <article
-                    className='flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between'
-                    key={entry.id}
-                  >
-                    <div>
-                      <p className='font-semibold text-stone-900'>
-                        {formatDate(entry.clock_in)}
-                      </p>
+              {loading ? (
+                <div className='py-10 text-center text-sm text-stone-500'>
+                  {t.loadingEntries}
+                </div>
+              ) : entries.length === 0 ? (
+                <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
+                  <p className='font-medium text-stone-700'>{t.noShifts}</p>
+                  <p className='mt-1 text-sm text-stone-500'>
+                    {t.noShiftsDescription}
+                  </p>
+                </div>
+              ) : (
+                <div className='divide-y divide-stone-200'>
+                  {entries.map((entry) => {
+                    const correction = getCorrectionForShift(entry.id)
 
-                      <p className='mt-1 text-sm text-stone-500'>
-                        {formatTime(entry.clock_in)}
-                        {' – '}
-                        {entry.clock_out ? formatTime(entry.clock_out) : 'Now'}
-                      </p>
-                    </div>
+                    return (
+                      <article
+                        className='flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between'
+                        key={entry.id}
+                      >
+                        <div>
+                          <p className='font-semibold text-stone-900'>
+                            {formatDate(entry.clock_in)}
+                          </p>
 
-                    <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
-                      {!entry.clock_out && (
-                        <span className='rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700'>
-                          {t.active}
-                        </span>
-                      )}
+                          <p className='mt-1 text-sm text-stone-500'>
+                            {formatTime(entry.clock_in)}
+                            {' – '}
+                            {entry.clock_out
+                              ? formatTime(entry.clock_out)
+                              : 'Now'}
+                          </p>
+                        </div>
 
-                      <span className='rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700'>
-                        {calculateDuration(entry.clock_in, entry.clock_out)}
-                      </span>
+                        <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
+                          {!entry.clock_out && (
+                            <span className='rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700'>
+                              {t.active}
+                            </span>
+                          )}
 
-                      {entry.clock_out &&
-                        (correction ? (
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                              correction.status === 'pending'
-                                ? 'bg-amber-100 text-amber-700'
-                                : correction.status === 'approved'
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : 'bg-red-100 text-red-700'
-                            }`}
-                          >
-                            {correction.status === 'pending'
-                              ? t.correctionPending
-                              : correction.status === 'approved'
-                                ? t.correctionApproved
-                                : t.correctionRejected}
+                          <span className='rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700'>
+                            {calculateDuration(
+                              entry.clock_in,
+                              entry.clock_out,
+                            )}
                           </span>
-                        ) : (
-                          <button
-                            type='button'
-                            onClick={() => openCorrectionForm(entry)}
-                            className='rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-100'
-                          >
-                            {t.requestCorrection}
-                          </button>
-                        ))}
-                    </div>
-                  </article>
-                )
-              })}
+
+                          {entry.clock_out &&
+                            (correction ? (
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                  correction.status === 'pending'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : correction.status === 'approved'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-red-100 text-red-700'
+                                }`}
+                              >
+                                {correction.status === 'pending'
+                                  ? t.correctionPending
+                                  : correction.status === 'approved'
+                                    ? t.correctionApproved
+                                    : t.correctionRejected}
+                              </span>
+                            ) : (
+                              <button
+                                type='button'
+                                onClick={() => openCorrectionForm(entry)}
+                                className='rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-100'
+                              >
+                                {t.requestCorrection}
+                              </button>
+                            ))}
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </section>
