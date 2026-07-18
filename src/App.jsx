@@ -7,9 +7,12 @@ const AUTO_LOGOUT_MS = AUTO_LOGOUT_MINUTES * 60 * 1000
 function getStartOfWeek(date) {
   const result = new Date(date)
   const day = result.getDay()
-  const difference = day === 0 ? -6 : 1 - day
 
-  result.setDate(result.getDate() + difference)
+  // Tuesday is 2 in JavaScript dates:
+  // Sunday = 0, Monday = 1, Tuesday = 2, etc.
+  const daysSinceTuesday = (day - 2 + 7) % 7
+
+  result.setDate(result.getDate() - daysSinceTuesday)
   result.setHours(0, 0, 0, 0)
 
   return result
@@ -82,7 +85,11 @@ const translations = {
     recentShiftsDescription: 'Your 20 most recent time entries',
     showRecentShifts: 'Show Recent Shifts',
     hideRecentShifts: 'Hide Recent Shifts',
-    recentShiftsHidden: 'Recent shifts are hidden by default to keep the clock screen simple.',
+    showAllShifts: 'Show All Shifts',
+    loadingAllShifts: 'Loading all shifts...',
+    showLessShifts: 'Show Less',
+    recentShiftsPreview: 'Showing your 3 most recent shifts.',
+    recentShiftsHidden: 'Recent shifts are hidden. You can show them again if needed.',
     refresh: 'Refresh',
     loadingEntries: 'Loading entries...',
     noShifts: 'No shifts yet',
@@ -92,6 +99,8 @@ const translations = {
     requestCorrection: 'Request Correction',
     reportMissedShift: 'Report Missed Shift',
     missedShift: 'Missed Shift',
+    clockInSuccess: 'You are clocked in.',
+    clockOutSuccess: 'You are clocked out.',
     missedShiftDescription:
       'Forgot to clock in for a whole shift? Submit a request for manager approval.',
     correctionPending: 'Correction pending',
@@ -152,7 +161,11 @@ const translations = {
     recentShiftsDescription: 'Tus 20 registros de tiempo más recientes',
     showRecentShifts: 'Mostrar turnos recientes',
     hideRecentShifts: 'Ocultar turnos recientes',
-    recentShiftsHidden: 'Los turnos recientes están ocultos para mantener esta pantalla simple.',
+    showAllShifts: 'Mostrar todos los turnos',
+    loadingAllShifts: 'Cargando todos los turnos...',
+    showLessShifts: 'Mostrar menos',
+    recentShiftsPreview: 'Mostrando tus 3 turnos más recientes.',
+    recentShiftsHidden: 'Los turnos recientes están ocultos. Puedes mostrarlos de nuevo si es necesario.',
     refresh: 'Actualizar',
     loadingEntries: 'Cargando registros...',
     noShifts: 'Aún no hay turnos',
@@ -162,6 +175,8 @@ const translations = {
     requestCorrection: 'Solicitar corrección',
     reportMissedShift: 'Reportar turno olvidado',
     missedShift: 'Turno olvidado',
+    clockInSuccess: 'Entrada registrada.',
+    clockOutSuccess: 'Salida registrada.',
     missedShiftDescription:
       '¿Olvidaste marcar entrada durante un turno completo? Envía una solicitud para aprobación del gerente.',
     correctionPending: 'Corrección pendiente',
@@ -253,7 +268,10 @@ function App() {
   const [managerTotals, setManagerTotals] = useState([])
   const [managerShifts, setManagerShifts] = useState([])
   const [expandedEmployeeId, setExpandedEmployeeId] = useState(null)
-  const [showRecentShifts, setShowRecentShifts] = useState(false)
+  const [hideRecentShifts, setHideRecentShifts] = useState(false)
+  const [showAllRecentShifts, setShowAllRecentShifts] = useState(false)
+  const [loadingAllShifts, setLoadingAllShifts] = useState(false)
+  const [allRecentShiftsLoaded, setAllRecentShiftsLoaded] = useState(false)
   const [correctionRequests, setCorrectionRequests] = useState([])
   const [pendingCorrections, setPendingCorrections] = useState([])
 
@@ -280,6 +298,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   const [currentTime, setCurrentTime] = useState(new Date())
 
   useEffect(() => {
@@ -293,6 +312,18 @@ function App() {
 
     return () => window.clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (!successMessage) {
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage('')
+    }, 2500)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [successMessage])
 
   useEffect(() => {
     if (!loggedInEmployee) {
@@ -452,7 +483,11 @@ function App() {
     }
 
     setLoggedInEmployee(employee)
-    setShowRecentShifts(false)
+    setSuccessMessage('')
+    setHideRecentShifts(false)
+    setShowAllRecentShifts(false)
+    setAllRecentShiftsLoaded(false)
+    setAllRecentShiftsLoaded(false)
 
     if (isManagerRoute) {
       await Promise.all([
@@ -490,20 +525,69 @@ function App() {
       setErrorMessage(t.errors.loadEntries)
     } else {
       setEntries(data ?? [])
+      setAllRecentShiftsLoaded(false)
     }
 
     setLoading(false)
   }
 
-  async function loadManagerTotals(
-    managerId = loggedInEmployee?.id,
-    managerPin = pin,
+  async function loadAllEmployeeEntries(
+    employeeId = loggedInEmployee?.id,
+    employeePin = pin,
   ) {
-    if (!managerId || !managerPin || !startDate || !endDate) {
+    if (!employeeId || !employeePin) {
+      return false
+    }
+
+    setLoadingAllShifts(true)
+    setErrorMessage('')
+
+    const { data, error } = await supabase.rpc('get_employee_all_entries', {
+      p_employee_id: employeeId,
+      p_pin: employeePin,
+    })
+
+    if (error) {
+      console.error(error)
+      setErrorMessage(t.errors.loadEntries)
+      setLoadingAllShifts(false)
+      return false
+    }
+
+    setEntries(data ?? [])
+    setAllRecentShiftsLoaded(true)
+    setLoadingAllShifts(false)
+    return true
+  }
+
+  async function toggleShowAllRecentShifts() {
+    if (showAllRecentShifts) {
+      setShowAllRecentShifts(false)
       return
     }
 
-    if (new Date(startDate) > new Date(endDate)) {
+    if (!allRecentShiftsLoaded) {
+      const loaded = await loadAllEmployeeEntries()
+
+      if (!loaded) {
+        return
+      }
+    }
+
+    setShowAllRecentShifts(true)
+  }
+
+  async function loadManagerTotals(
+    managerId = loggedInEmployee?.id,
+    managerPin = pin,
+    reportStartDate = startDate,
+    reportEndDate = endDate,
+  ) {
+    if (!managerId || !managerPin || !reportStartDate || !reportEndDate) {
+      return
+    }
+
+    if (new Date(reportStartDate) > new Date(reportEndDate)) {
       setErrorMessage('The start date must be before the end date.')
       return
     }
@@ -511,8 +595,8 @@ function App() {
     setLoading(true)
     setErrorMessage('')
 
-    const rangeStart = new Date(`${startDate}T00:00:00`)
-    const rangeEnd = new Date(`${endDate}T00:00:00`)
+    const rangeStart = new Date(`${reportStartDate}T00:00:00`)
+    const rangeEnd = new Date(`${reportEndDate}T00:00:00`)
     rangeEnd.setDate(rangeEnd.getDate() + 1)
 
     const payload = {
@@ -591,6 +675,12 @@ function App() {
 
   const activeEntry = entries.find((entry) => entry.clock_out === null)
   const isRequestModalOpen = requestMode === 'missing' || selectedShift !== null
+  const displayedEntries = hideRecentShifts
+    ? []
+    : showAllRecentShifts
+      ? entries
+      : entries.slice(0, 3)
+  const hasMoreRecentShifts = !hideRecentShifts && entries.length > 3
 
   async function clockIn() {
     if (!loggedInEmployee || activeEntry || submitting || isManagerRoute) {
@@ -614,6 +704,7 @@ function App() {
       )
     } else {
       await loadEntries()
+      setSuccessMessage(t.clockInSuccess)
     }
 
     setSubmitting(false)
@@ -637,6 +728,7 @@ function App() {
       setErrorMessage(t.errors.clockOutFailed)
     } else {
       await loadEntries()
+      setSuccessMessage(t.clockOutSuccess)
     }
 
     setSubmitting(false)
@@ -850,8 +942,11 @@ function App() {
     setManagerTotals([])
     setManagerShifts([])
     setExpandedEmployeeId(null)
-    setShowRecentShifts(false)
+    setHideRecentShifts(false)
+    setShowAllRecentShifts(false)
+    setAllRecentShiftsLoaded(false)
     setErrorMessage('')
+    setSuccessMessage('')
     setStartDate(formatDateForInput(beginning))
     setEndDate(formatDateForInput(addDays(beginning, 6)))
   }
@@ -1068,11 +1163,27 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  function selectCurrentWeek() {
+  async function selectCurrentWeek() {
     const beginning = getStartOfWeek(new Date())
+    const nextStartDate = formatDateForInput(beginning)
+    const nextEndDate = formatDateForInput(addDays(beginning, 6))
 
-    setStartDate(formatDateForInput(beginning))
-    setEndDate(formatDateForInput(addDays(beginning, 6)))
+    setStartDate(nextStartDate)
+    setEndDate(nextEndDate)
+
+    await loadManagerTotals(loggedInEmployee?.id, pin, nextStartDate, nextEndDate)
+  }
+
+  async function selectPreviousWeek() {
+    const currentWeekBeginning = getStartOfWeek(new Date())
+    const previousWeekBeginning = addDays(currentWeekBeginning, -7)
+    const nextStartDate = formatDateForInput(previousWeekBeginning)
+    const nextEndDate = formatDateForInput(addDays(previousWeekBeginning, 6))
+
+    setStartDate(nextStartDate)
+    setEndDate(nextEndDate)
+
+    await loadManagerTotals(loggedInEmployee?.id, pin, nextStartDate, nextEndDate)
   }
 
   const totalTeamSeconds = managerTotals.reduce(
@@ -1326,23 +1437,23 @@ function App() {
                 {loading ? 'Loading...' : 'Apply Date Range'}
               </button>
 
-              {/* <button
+              <button
                 type='button'
                 onClick={selectCurrentWeek}
                 disabled={loading}
                 className='rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/15 transition hover:bg-white/15 disabled:opacity-50'
               >
-                Select This Week
-              </button> */}
+                Current Week
+              </button>
 
-              {/* <button
+              <button
                 type='button'
-                onClick={exportPayrollCsv}
-                disabled={loading || managerShifts.length === 0}
-                className='rounded-xl bg-[#d8c6a2] px-5 py-3 text-sm font-semibold text-[#2f352b] transition hover:bg-[#e2d1ae] disabled:cursor-not-allowed disabled:opacity-50'
+                onClick={selectPreviousWeek}
+                disabled={loading}
+                className='rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/15 transition hover:bg-white/15 disabled:opacity-50'
               >
-                Export CSV
-              </button> */}
+                Previous Week
+              </button>
 
               <button
                 type='button'
@@ -1703,6 +1814,12 @@ function App() {
   return (
     <main className='min-h-screen bg-[#f4f0e7] px-4 py-6 text-stone-800 sm:px-6 sm:py-10'>
       <div className='mx-auto max-w-2xl'>
+        {successMessage && (
+          <div className='fixed top-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-sm font-semibold text-emerald-800 shadow-lg'>
+            {successMessage}
+          </div>
+        )}
+
         <div className='mb-4 flex justify-end'>
           <LanguageToggle language={language} onChange={changeLanguage} />
         </div>
@@ -1802,31 +1919,30 @@ function App() {
         </section>
 
         <section className='rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_16px_50px_rgba(67,62,51,0.08)] sm:p-7'>
-          <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
             <div>
               <h2 className='text-lg font-semibold text-stone-900'>
                 {t.recentShifts}
               </h2>
               <p className='mt-1 text-sm leading-6 text-stone-500'>
-                {showRecentShifts
-                  ? t.recentShiftsDescription
-                  : t.recentShiftsHidden}
+                {hideRecentShifts ? t.recentShiftsHidden : t.recentShiftsPreview}
               </p>
             </div>
 
-            <button
-              type='button'
-              onClick={() => setShowRecentShifts((current) => !current)}
-              disabled={loading || submitting}
-              className='rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
-            >
-              {showRecentShifts ? t.hideRecentShifts : t.showRecentShifts}
-            </button>
-          </div>
+            <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
+              <button
+                type='button'
+                onClick={() => {
+                  setHideRecentShifts((current) => !current)
+                  setShowAllRecentShifts(false)
+                }}
+                disabled={loading || submitting}
+                className='rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
+              >
+                {hideRecentShifts ? t.showRecentShifts : t.hideRecentShifts}
+              </button>
 
-          {showRecentShifts && (
-            <div className='mt-5'>
-              <div className='mb-5 flex justify-end'>
+              {!hideRecentShifts && (
                 <button
                   type='button'
                   onClick={() =>
@@ -1836,94 +1952,120 @@ function App() {
                     ])
                   }
                   disabled={loading || submitting}
-                  className='rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
+                  className='rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
                 >
                   {t.refresh}
                 </button>
-              </div>
-
-              {loading ? (
-                <div className='py-10 text-center text-sm text-stone-500'>
-                  {t.loadingEntries}
-                </div>
-              ) : entries.length === 0 ? (
-                <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
-                  <p className='font-medium text-stone-700'>{t.noShifts}</p>
-                  <p className='mt-1 text-sm text-stone-500'>
-                    {t.noShiftsDescription}
-                  </p>
-                </div>
-              ) : (
-                <div className='divide-y divide-stone-200'>
-                  {entries.map((entry) => {
-                    const correction = getCorrectionForShift(entry.id)
-
-                    return (
-                      <article
-                        className='flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between'
-                        key={entry.id}
-                      >
-                        <div>
-                          <p className='font-semibold text-stone-900'>
-                            {formatDate(entry.clock_in)}
-                          </p>
-
-                          <p className='mt-1 text-sm text-stone-500'>
-                            {formatTime(entry.clock_in)}
-                            {' – '}
-                            {entry.clock_out
-                              ? formatTime(entry.clock_out)
-                              : 'Now'}
-                          </p>
-                        </div>
-
-                        <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
-                          {!entry.clock_out && (
-                            <span className='rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700'>
-                              {t.active}
-                            </span>
-                          )}
-
-                          <span className='rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700'>
-                            {calculateDuration(
-                              entry.clock_in,
-                              entry.clock_out,
-                            )}
-                          </span>
-
-                          {entry.clock_out &&
-                            (correction ? (
-                              <span
-                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                  correction.status === 'pending'
-                                    ? 'bg-amber-100 text-amber-700'
-                                    : correction.status === 'approved'
-                                      ? 'bg-emerald-100 text-emerald-700'
-                                      : 'bg-red-100 text-red-700'
-                                }`}
-                              >
-                                {correction.status === 'pending'
-                                  ? t.correctionPending
-                                  : correction.status === 'approved'
-                                    ? t.correctionApproved
-                                    : t.correctionRejected}
-                              </span>
-                            ) : (
-                              <button
-                                type='button'
-                                onClick={() => openCorrectionForm(entry)}
-                                className='rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-100'
-                              >
-                                {t.requestCorrection}
-                              </button>
-                            ))}
-                        </div>
-                      </article>
-                    )
-                  })}
-                </div>
               )}
             </div>
+          </div>
+
+          {hideRecentShifts ? (
+            <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-8 text-center'>
+              <p className='text-sm font-medium text-stone-600'>
+                {t.recentShiftsHidden}
+              </p>
+            </div>
+          ) : loading ? (
+            <div className='py-10 text-center text-sm text-stone-500'>
+              {t.loadingEntries}
+            </div>
+          ) : entries.length === 0 ? (
+            <div className='rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center'>
+              <p className='font-medium text-stone-700'>{t.noShifts}</p>
+              <p className='mt-1 text-sm text-stone-500'>
+                {t.noShiftsDescription}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className='divide-y divide-stone-200'>
+                {displayedEntries.map((entry) => {
+                  const correction = getCorrectionForShift(entry.id)
+
+                  return (
+                    <article
+                      className='flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between'
+                      key={entry.id}
+                    >
+                      <div>
+                        <p className='font-semibold text-stone-900'>
+                          {formatDate(entry.clock_in)}
+                        </p>
+
+                        <p className='mt-1 text-sm text-stone-500'>
+                          {formatTime(entry.clock_in)}
+                          {' – '}
+                          {entry.clock_out ? formatTime(entry.clock_out) : 'Now'}
+                        </p>
+                      </div>
+
+                      <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
+                        {!entry.clock_out && (
+                          <span className='rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700'>
+                            {t.active}
+                          </span>
+                        )}
+
+                        <span className='rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700'>
+                          {calculateDuration(entry.clock_in, entry.clock_out)}
+                        </span>
+
+                        {entry.clock_out &&
+                          (correction ? (
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                correction.status === 'pending'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : correction.status === 'approved'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-red-100 text-red-700'
+                              }`}
+                            >
+                              {correction.status === 'pending'
+                                ? t.correctionPending
+                                : correction.status === 'approved'
+                                  ? t.correctionApproved
+                                  : t.correctionRejected}
+                            </span>
+                          ) : (
+                            <button
+                              type='button'
+                              onClick={() => openCorrectionForm(entry)}
+                              className='rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-100'
+                            >
+                              {t.requestCorrection}
+                            </button>
+                          ))}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+
+              {hasMoreRecentShifts && (
+                <div className='mt-4 rounded-xl bg-stone-50 px-4 py-3 text-center'>
+                  <p className='mb-3 text-sm text-stone-500'>
+                    {showAllRecentShifts
+                      ? `Showing all ${entries.length} shifts.`
+                      : `Showing 3 of ${entries.length} recent shifts.`}
+                  </p>
+
+                  <button
+                    type='button'
+                    onClick={toggleShowAllRecentShifts}
+                    disabled={loading || submitting || loadingAllShifts}
+                    className='rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
+                  >
+                    {loadingAllShifts
+                      ? t.loadingAllShifts
+                      : showAllRecentShifts
+                        ? t.showLessShifts
+                        : t.showAllShifts}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
 
