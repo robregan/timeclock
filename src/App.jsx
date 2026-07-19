@@ -64,7 +64,6 @@ function formatDateTime(value) {
   })
 }
 
-
 const translations = {
   en: {
     staffLabel: 'Hapgood Staff',
@@ -89,7 +88,8 @@ const translations = {
     loadingAllShifts: 'Loading all shifts...',
     showLessShifts: 'Show Less',
     recentShiftsPreview: 'Showing your 3 most recent shifts.',
-    recentShiftsHidden: 'Recent shifts are hidden. You can show them again if needed.',
+    recentShiftsHidden:
+      'Recent shifts are hidden. You can show them again if needed.',
     refresh: 'Refresh',
     loadingEntries: 'Loading entries...',
     noShifts: 'No shifts yet',
@@ -165,7 +165,8 @@ const translations = {
     loadingAllShifts: 'Cargando todos los turnos...',
     showLessShifts: 'Mostrar menos',
     recentShiftsPreview: 'Mostrando tus 3 turnos más recientes.',
-    recentShiftsHidden: 'Los turnos recientes están ocultos. Puedes mostrarlos de nuevo si es necesario.',
+    recentShiftsHidden:
+      'Los turnos recientes están ocultos. Puedes mostrarlos de nuevo si es necesario.',
     refresh: 'Actualizar',
     loadingEntries: 'Cargando registros...',
     noShifts: 'Aún no hay turnos',
@@ -368,12 +369,7 @@ function App() {
   }, [loggedInEmployee])
 
   useEffect(() => {
-    if (
-      !loggedInEmployee &&
-      pin.length === 4 &&
-      !submitting &&
-      !loading
-    ) {
+    if (!loggedInEmployee && pin.length === 4 && !submitting && !loading) {
       logIn(null, pin)
     }
   }, [pin, loggedInEmployee, submitting, loading])
@@ -1171,19 +1167,32 @@ function App() {
     setStartDate(nextStartDate)
     setEndDate(nextEndDate)
 
-    await loadManagerTotals(loggedInEmployee?.id, pin, nextStartDate, nextEndDate)
+    await loadManagerTotals(
+      loggedInEmployee?.id,
+      pin,
+      nextStartDate,
+      nextEndDate,
+    )
   }
 
   async function selectPreviousWeek() {
-    const currentWeekBeginning = getStartOfWeek(new Date())
-    const previousWeekBeginning = addDays(currentWeekBeginning, -7)
+    const displayedWeekBeginning = startDate
+      ? new Date(`${startDate}T00:00:00`)
+      : getStartOfWeek(new Date())
+
+    const previousWeekBeginning = addDays(displayedWeekBeginning, -7)
     const nextStartDate = formatDateForInput(previousWeekBeginning)
     const nextEndDate = formatDateForInput(addDays(previousWeekBeginning, 6))
 
     setStartDate(nextStartDate)
     setEndDate(nextEndDate)
 
-    await loadManagerTotals(loggedInEmployee?.id, pin, nextStartDate, nextEndDate)
+    await loadManagerTotals(
+      loggedInEmployee?.id,
+      pin,
+      nextStartDate,
+      nextEndDate,
+    )
   }
 
   const totalTeamSeconds = managerTotals.reduce(
@@ -1535,8 +1544,7 @@ function App() {
                           </span>
                         </div>
                         <p className='mt-1 text-sm text-stone-500'>
-                          Submitted{' '}
-                          {formatDateTime(request.created_at)}
+                          Submitted {formatDateTime(request.created_at)}
                         </p>
                       </div>
 
@@ -1552,12 +1560,10 @@ function App() {
                             Original
                           </p>
                           <p className='mt-2 text-sm font-medium text-stone-800'>
-                            In:{' '}
-                            {formatDateTime(request.original_clock_in)}
+                            In: {formatDateTime(request.original_clock_in)}
                           </p>
                           <p className='mt-1 text-sm font-medium text-stone-800'>
-                            Out:{' '}
-                            {formatDateTime(request.original_clock_out)}
+                            Out: {formatDateTime(request.original_clock_out)}
                           </p>
                         </div>
                       )}
@@ -1569,12 +1575,10 @@ function App() {
                             : 'Requested'}
                         </p>
                         <p className='mt-2 text-sm font-medium text-stone-800'>
-                          In:{' '}
-                          {formatDateTime(request.requested_clock_in)}
+                          In: {formatDateTime(request.requested_clock_in)}
                         </p>
                         <p className='mt-1 text-sm font-medium text-stone-800'>
-                          Out:{' '}
-                          {formatDateTime(request.requested_clock_out)}
+                          Out: {formatDateTime(request.requested_clock_out)}
                         </p>
                       </div>
                     </div>
@@ -1925,7 +1929,9 @@ function App() {
                 {t.recentShifts}
               </h2>
               <p className='mt-1 text-sm leading-6 text-stone-500'>
-                {hideRecentShifts ? t.recentShiftsHidden : t.recentShiftsPreview}
+                {hideRecentShifts
+                  ? t.recentShiftsHidden
+                  : t.recentShiftsPreview}
               </p>
             </div>
 
@@ -1996,7 +2002,9 @@ function App() {
                         <p className='mt-1 text-sm text-stone-500'>
                           {formatTime(entry.clock_in)}
                           {' – '}
-                          {entry.clock_out ? formatTime(entry.clock_out) : 'Now'}
+                          {entry.clock_out
+                            ? formatTime(entry.clock_out)
+                            : 'Now'}
                         </p>
                       </div>
 
