@@ -94,8 +94,8 @@ Install:
 
 Run:
 
-    git clone https://github.com/robregan/hapgood-clock.git
-    cd hapgood-clock
+    git clone https://github.com/robregan/timeclock.git
+    cd timeclock
 
 ### Install Dependencies
 
