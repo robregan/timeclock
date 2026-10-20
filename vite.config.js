@@ -13,6 +13,7 @@ export default defineConfig({
       manifest: false,
       workbox: {
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/manager(?:\/|$)/],
         runtimeCaching: [],
       },
       devOptions: {
