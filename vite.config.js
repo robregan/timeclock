@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   plugins: [
@@ -9,44 +10,22 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
-
-      manifest: {
-        name: 'ShiftClock Dev',
-        short_name: 'ShiftClock',
-        description: 'Employee time clock and shift management',
-        id: '/',
-        start_url: '/',
-        scope: '/',
-        display: 'standalone',
-        background_color: '#f4f0e7',
-        theme_color: '#586950',
-
-        icons: [
-          {
-            src: '/pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: '/pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable',
-          },
-        ],
-      },
-
+      // Two static manifests: employee at / and manager at /manager/.
+      // Do not inject a single site-wide manifest into both HTML pages.
+      manifest: false,
       workbox: {
         navigateFallback: '/index.html',
         runtimeCaching: [],
       },
-
       devOptions: {
         enabled: false,
       },
     }),
   ],
-
+  input: {
+    employee: fileURLToPath(new URL('./index.html', import.meta.url)),
+    manager: fileURLToPath(new URL('./manager/index.html', import.meta.url)),
+  },
   server: {
     watch: {
       ignored: ['**/supabase/**'],

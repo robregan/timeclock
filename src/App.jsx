@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
-import { listOfflinePunches, recordOfflinePunch, removeSyncedPunch } from './offlinePunchStore'
 
 const AUTO_LOGOUT_MINUTES = 5
 const AUTO_LOGOUT_MS = AUTO_LOGOUT_MINUTES * 60 * 1000
@@ -152,7 +151,6 @@ const translations = {
     correctionApproved: 'Correction approved',
     correctionRejected: 'Correction rejected',
     employeeFooter: 'Hapgood Employee Time Clock',
-    managerDashboard: 'Manager Dashboard',
     shiftCorrection: 'Shift Correction',
     requestChange: 'Request a change',
     managerApprovalNotice: 'This request must be approved by a manager.',
@@ -161,13 +159,6 @@ const translations = {
     correctClockOut: 'Correct clock-out',
     reason: 'Reason',
     reasonTooShort: 'Please enter a reason (at least 3 characters).',
-    offlinePunchHeading: 'Offline punch · unverified',
-    offlinePunchExplainer: 'Choose your name, then record a clock-in or clock-out. No PIN can be verified offline. The punch stays on this device until a manager syncs and approves it. It is NOT yet payroll time.',
-    offlineClockIn: 'Record offline clock-in',
-    offlineClockOut: 'Record offline clock-out',
-    offlineSaved: 'Saved on this device. A manager must sync and review it before it counts toward payroll.',
-    offlineStoreError: 'Could not save this punch. Please notify a manager and write down the time.',
-    offlineQueued: 'Unsynced punches on this device',
 
     connectionUnavailable: 'Unable to reach ShiftClock. Online clock-in and PIN verification are unavailable.',
     cachedRosterNotice: 'Showing the last saved employee list. Names may be out of date.',
@@ -247,7 +238,6 @@ const translations = {
     correctionApproved: 'Corrección aprobada',
     correctionRejected: 'Corrección rechazada',
     employeeFooter: 'Reloj de empleados de Hapgood',
-    managerDashboard: 'Manager Dashboard',
     shiftCorrection: 'Corrección de turno',
     requestChange: 'Solicitar un cambio',
     managerApprovalNotice: 'Esta solicitud debe ser aprobada por un gerente.',
@@ -256,13 +246,6 @@ const translations = {
     correctClockOut: 'Hora correcta de salida',
     reason: 'Motivo',
     reasonTooShort: 'Escribe un motivo (al menos 3 caracteres).',
-    offlinePunchHeading: 'Registro sin conexión · sin verificar',
-    offlinePunchExplainer: 'Selecciona tu nombre y registra entrada o salida. Sin internet no se puede verificar el PIN. El registro queda en este dispositivo hasta que el gerente lo sincronice y apruebe. Aún NO cuenta como horas de nómina.',
-    offlineClockIn: 'Guardar entrada sin conexión',
-    offlineClockOut: 'Guardar salida sin conexión',
-    offlineSaved: 'Guardado en este dispositivo. El gerente debe sincronizarlo y revisarlo antes de contar las horas.',
-    offlineStoreError: 'No se pudo guardar. Avisa al gerente y anota la hora.',
-    offlineQueued: 'Registros pendientes de sincronizar',
 
     connectionUnavailable: 'Sin conexión con ShiftClock. No se puede registrar la entrada ni verificar el PIN.',
     cachedRosterNotice: 'Se muestra la última lista de empleados guardada. Puede estar desactualizada.',
@@ -373,17 +356,9 @@ function ConnectionNotice({ t, usingCachedRoster, rosterSavedAt, onRetry, loadin
 }
 
 function App() {
-  const isManagerRoute = window.location.pathname === '/manager'
+  const isManagerRoute = window.location.pathname.replace(/\/+$/, '') === '/manager'
 
   const [employees, setEmployees] = useState([])
-  const [offlineQueue, setOfflineQueue] = useState([])
-  const [pendingOfflinePunches, setPendingOfflinePunches] = useState([])
-  const [offlineNotice, setOfflineNotice] = useState('')
-  const [offlineBusy, setOfflineBusy] = useState(false)
-  const [offlineReviewBusyId, setOfflineReviewBusyId] = useState(null)
-  const [offlineOutSelections, setOfflineOutSelections] = useState({})
-  const [offlineNotes, setOfflineNotes] = useState({})
-  const [offlineReviewLoadFailed, setOfflineReviewLoadFailed] = useState(false)
 
   const [browserOnline, setBrowserOnline] = useState(() => navigator.onLine)
   const [serverUnavailable, setServerUnavailable] = useState(false)
@@ -454,13 +429,11 @@ function App() {
 
   useEffect(() => {
     void loadEmployees()
-    void refreshOfflineQueue()
 
     function handleOnline() {
       setBrowserOnline(true)
       void loadEmployees()
-      void refreshOfflineQueue()
-    }
+      }
 
     function handleOffline() {
       setBrowserOnline(false)
@@ -569,149 +542,6 @@ function App() {
     }
 
     setPin('')
-  }
-
-  async function refreshOfflineQueue() {
-    try {
-      setOfflineQueue(await listOfflinePunches())
-    } catch (error) {
-      console.error('Could not read offline punch queue:', error)
-      setOfflineNotice(translations[isManagerRoute ? 'en' : language].offlineStoreError)
-    }
-  }
-
-  async function saveOfflineEvent(eventType) {
-    if (offlineBusy || !connectionUnavailable || isManagerRoute) return
-    const employee = employees.find((item) => item.id === selectedEmployeeId)
-    if (!employee) {
-      setOfflineNotice(t.errors.employeeNotFound)
-      return
-    }
-    setOfflineBusy(true)
-    setOfflineNotice('')
-    try {
-      // These are *claims* made from a shared device, not verified time entries.
-      const punch = await recordOfflinePunch({
-        employeeId: employee.id,
-        employeeName: employee.name,
-        eventType,
-      })
-      await refreshOfflineQueue()
-      setOfflineNotice(`${t.offlineSaved} ${formatDateTime(punch.occurred_at)}`)
-    } catch (error) {
-      console.error('Could not save offline punch:', error)
-      setOfflineNotice(t.offlineStoreError)
-    } finally {
-      setOfflineBusy(false)
-    }
-  }
-
-  async function loadPendingOfflinePunches(
-    managerId = loggedInEmployee?.id,
-    managerPin = pin,
-  ) {
-    if (!managerId || !managerPin) return
-    const { data, error } = await supabase.rpc('get_pending_offline_punches', {
-      p_manager_id: managerId,
-      p_manager_pin: managerPin,
-    })
-    if (error) {
-      console.error('Could not load offline punches:', error)
-      setOfflineReviewLoadFailed(true)
-      setPendingOfflinePunches([])
-    } else {
-      setOfflineReviewLoadFailed(false)
-      setPendingOfflinePunches(data ?? [])
-    }
-  }
-
-  async function syncOfflineQueue() {
-    if (!isManagerRoute || !loggedInEmployee || offlineBusy || connectionUnavailable) return
-    setOfflineBusy(true)
-    setErrorMessage('')
-    try {
-      // Manager authentication is required for *each* RPC; this is not
-      // an anonymous auto-sync and nothing goes directly into payroll.
-      const punches = await listOfflinePunches()
-      let synced = 0
-      for (const punch of punches) {
-        const { error } = await supabase.rpc('submit_offline_punch_for_review', {
-          p_manager_id: loggedInEmployee.id,
-          p_manager_pin: pin,
-          p_event_id: punch.id,
-          p_employee_id: punch.employee_id,
-          p_event_type: punch.event_type,
-          p_occurred_at: punch.occurred_at,
-          p_device_id: punch.device_id,
-        })
-        if (error) throw error
-        // Delete only after server acknowledgment. Retried UUIDs are idempotent.
-        await removeSyncedPunch(punch.id)
-        synced += 1
-      }
-      setSuccessMessage(`${synced} offline punches synced for manager review. None were added to payroll.`)
-      await loadPendingOfflinePunches()
-    } catch (error) {
-      console.error('Offline sync failed:', error)
-      setErrorMessage(`Offline sync interrupted: ${error.message}. Unsynced punches remain on this device.`)
-    } finally {
-      await refreshOfflineQueue()
-      setOfflineBusy(false)
-    }
-  }
-
-  function offlineForEmployee(employeeId) {
-    return pendingOfflinePunches.filter((event) => event.employee_id === employeeId)
-  }
-
-  async function approveOfflinePair(inEvent, outEventId) {
-    const note = (offlineNotes[inEvent.id] || '').trim()
-    if (!outEventId || note.length < 3) {
-      setErrorMessage('Choose a matching clock-out and enter an approval reason (at least 3 characters).')
-      return
-    }
-    setOfflineReviewBusyId(inEvent.id)
-    setErrorMessage('')
-    const { error } = await supabase.rpc('manager_approve_offline_pair', {
-      p_manager_id: loggedInEmployee.id,
-      p_manager_pin: pin,
-      p_clock_in_event_id: inEvent.id,
-      p_clock_out_event_id: outEventId,
-      p_manager_note: note,
-    })
-    if (error) {
-      console.error('Offline approval failed:', error)
-      setErrorMessage(error.message || 'Could not approve these punches.')
-    } else {
-      setOfflineOutSelections((old) => ({ ...old, [inEvent.id]: '' }))
-      setSuccessMessage('Offline shift reviewed and added to recorded hours.')
-      await refreshManagerDashboard()
-    }
-    setOfflineReviewBusyId(null)
-  }
-
-  async function rejectOfflinePunch(eventId) {
-    const note = (offlineNotes[eventId] || '').trim()
-    if (note.length < 3) {
-      setErrorMessage('Enter a rejection reason (at least 3 characters).')
-      return
-    }
-    setOfflineReviewBusyId(eventId)
-    setErrorMessage('')
-    const { error } = await supabase.rpc('manager_reject_offline_punch', {
-      p_manager_id: loggedInEmployee.id,
-      p_manager_pin: pin,
-      p_event_id: eventId,
-      p_manager_note: note,
-    })
-    if (error) {
-      console.error('Offline rejection failed:', error)
-      setErrorMessage(error.message || 'Could not reject this punch.')
-    } else {
-      setSuccessMessage('Unverified offline punch rejected. Recorded hours unchanged.')
-      await refreshManagerDashboard()
-    }
-    setOfflineReviewBusyId(null)
   }
 
   async function loadEmployees() {
@@ -1001,7 +831,6 @@ function App() {
     await Promise.all([
       loadManagerTotals(managerId, managerPin, reportStartDate, reportEndDate),
       loadPendingCorrections(managerId, managerPin),
-      loadPendingOfflinePunches(managerId, managerPin),
     ])
   }
 
@@ -1573,10 +1402,6 @@ function App() {
 
     setCorrectionRequests([])
     setPendingCorrections([])
-    setPendingOfflinePunches([])
-    setOfflineNotes({})
-    setOfflineOutSelections({})
-    setOfflineNotice('')
     setSelectedShift(null)
     setRequestMode('correction')
     setRequestedClockIn('')
@@ -1910,17 +1735,6 @@ function App() {
       currently_clocked_in: false,
     })
   }
-  for (const event of pendingOfflinePunches) {
-    if (knownEmployeeIds.has(event.employee_id)) continue
-    knownEmployeeIds.add(event.employee_id)
-    displayedManagerEmployees.push({
-      employee_id: event.employee_id,
-      employee_name: event.employee_name,
-      total_seconds: 0,
-      shift_count: 0,
-      currently_clocked_in: false,
-    })
-  }
   for (const request of pendingCorrections) {
     if (knownEmployeeIds.has(request.employee_id)) continue
     knownEmployeeIds.add(request.employee_id)
@@ -1933,8 +1747,8 @@ function App() {
     })
   }
   displayedManagerEmployees.sort((a, b) => {
-    const aPending = pendingForEmployee(a.employee_id).length + offlineForEmployee(a.employee_id).length
-    const bPending = pendingForEmployee(b.employee_id).length + offlineForEmployee(b.employee_id).length
+    const aPending = pendingForEmployee(a.employee_id).length
+    const bPending = pendingForEmployee(b.employee_id).length
     return bPending - aPending || a.employee_name.localeCompare(b.employee_name)
   })
 
@@ -1999,16 +1813,6 @@ function App() {
                 : loginT.loginInstructions}
             </p>
           </header>
-
-          {/* In-scope navigation keeps IndexedDB offline punches in this installed PWA. */}
-          <nav className='mb-4 flex justify-end'>
-            <a
-              href={isManagerRoute ? '/' : '/manager'}
-              className='rounded-lg px-3 py-2 text-sm font-semibold text-[#42523d] underline underline-offset-4 hover:text-[#2f352b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#42523d]'
-            >
-              {isManagerRoute ? '← Employee time clock' : loginT.managerDashboard + ' →'}
-            </a>
-          </nav>
 
           <form
             className='rounded-3xl border border-stone-200 bg-white p-6 shadow-[0_20px_60px_rgba(67,62,51,0.12)] sm:p-8'
@@ -2133,37 +1937,6 @@ function App() {
             )}
           </form>
 
-          {!isManagerRoute && connectionUnavailable && employees.length > 0 && (
-            <section className='mt-5 rounded-2xl border border-amber-300 bg-white p-5 shadow-sm'>
-              <h2 className='font-bold text-stone-900'>{t.offlinePunchHeading}</h2>
-              <p className='mt-2 text-sm leading-6 text-stone-700'>{t.offlinePunchExplainer}</p>
-              <p className='mt-3 text-xs text-stone-600'>
-                {t.employee}: <strong>{employees.find((item) => item.id === selectedEmployeeId)?.name || '—'}</strong>
-              </p>
-              <div className='mt-4 grid gap-2 sm:grid-cols-2'>
-                <button type='button' onClick={() => void saveOfflineEvent('in')}
-                  disabled={offlineBusy || !selectedEmployeeId}
-                  className='rounded-xl bg-[#2f352b] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50'>
-                  {t.offlineClockIn}
-                </button>
-                <button type='button' onClick={() => void saveOfflineEvent('out')}
-                  disabled={offlineBusy || !selectedEmployeeId}
-                  className='rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-800 disabled:opacity-50'>
-                  {t.offlineClockOut}
-                </button>
-              </div>
-              <p className='mt-3 text-sm font-semibold text-amber-900'>
-                {t.offlineQueued}: {offlineQueue.length}
-              </p>
-              {offlineNotice && <p role='status' className='mt-3 rounded-xl bg-amber-50 p-3 text-sm text-stone-900'>{offlineNotice}</p>}
-            </section>
-          )}
-
-          {!isManagerRoute && !connectionUnavailable && offlineQueue.length > 0 && (
-            <p className='mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900'>
-              {t.offlineQueued}: {offlineQueue.length}. {t.offlineSaved}
-            </p>
-          )}
         </div>
       </main>
     )
@@ -2313,26 +2086,6 @@ function App() {
             </p>
           )}
 
-          {(offlineQueue.length > 0 || pendingOfflinePunches.length > 0 || offlineReviewLoadFailed) && (
-            <section className='mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5'>
-              <h2 className='font-semibold text-stone-900'>Offline punches · unverified</h2>
-              <p className='mt-1 text-sm text-stone-700'>
-                {offlineQueue.length} saved on this device awaiting manager sync · {pendingOfflinePunches.length} on the server awaiting review.
-                Offline timestamps are not verified and do not count toward recorded or provisional payroll until approved.
-              </p>
-              {offlineQueue.length > 0 && (
-                <button type='button' onClick={() => void syncOfflineQueue()}
-                  disabled={offlineBusy || connectionUnavailable}
-                  className='mt-3 rounded-xl bg-[#2f352b] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50'>
-                  {offlineBusy ? 'Syncing...' : `Sync ${offlineQueue.length} saved punches for review`}
-                </button>
-              )}
-              {offlineReviewLoadFailed && (
-                <p className='mt-3 font-semibold text-red-700'>Could not load offline punches. Do not treat this review list as complete.</p>
-              )}
-            </section>
-          )}
-
           <section className='mb-6 grid gap-4 sm:grid-cols-3'>
             <article className='rounded-3xl border border-stone-200 bg-white p-6 shadow-[0_16px_50px_rgba(67,62,51,0.08)]'>
               <p className='text-sm font-medium text-stone-500'>
@@ -2408,7 +2161,6 @@ function App() {
                     employee.employee_id,
                   )
                   const employeePending = pendingForEmployee(employee.employee_id)
-                  const employeeOffline = offlineForEmployee(employee.employee_id)
                   const employeeAdjustmentSeconds = employeePending.reduce(
                     (total, request) => total + requestAdjustmentSeconds(request), 0,
                   )
@@ -2443,11 +2195,6 @@ function App() {
                             {employeePending.length > 0 && (
                               <span className='rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800'>
                                 ⚠ {employeePending.length} pending {employeePending.length === 1 ? 'request' : 'requests'}
-                              </span>
-                            )}
-                            {employeeOffline.length > 0 && (
-                              <span className='rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800'>
-                                {employeeOffline.length} unverified offline punches
                               </span>
                             )}
                           </div>
@@ -2559,64 +2306,6 @@ function App() {
                                   </div>
                                 </article>
                               ))}
-                            </section>
-                          )}
-
-                          {employeeOffline.length > 0 && (
-                            <section className='mb-5 space-y-3' aria-label='Unverified offline punches'>
-                              <h4 className='font-semibold text-orange-900'>Offline punches to review ({employeeOffline.length})</h4>
-                              <p className='text-sm text-stone-600'>Client device clock was not verified. Match a clock-in to its clock-out, check times, and enter a reason before approval. These hours are not in payroll yet.</p>
-                              {employeeOffline.map((event) => {
-                                const matchingOuts = event.event_type === 'in'
-                                  ? employeeOffline.filter((candidate) =>
-                                    candidate.event_type === 'out' &&
-                                    new Date(candidate.occurred_at) > new Date(event.occurred_at) &&
-                                    new Date(candidate.occurred_at) - new Date(event.occurred_at) <= 86400000
-                                  ) : []
-                                return (
-                                  <div key={event.id} className='rounded-xl border border-orange-200 bg-orange-50 p-4'>
-                                    <p className='text-sm font-semibold text-stone-900'>
-                                      {event.event_type === 'in' ? 'Clock IN' : 'Clock OUT'} · {formatDateTime(event.occurred_at)}
-                                    </p>
-                                    <p className='mt-1 text-xs text-orange-900'>Unverified · received {formatDateTime(event.received_at)}</p>
-                                    {event.event_type === 'in' && (
-                                      <label className='mt-3 block text-sm font-semibold text-stone-700'>
-                                        Matching clock-out
-                                        <select value={offlineOutSelections[event.id] || ''}
-                                          onChange={(e) => setOfflineOutSelections((old) => ({ ...old, [event.id]: e.target.value }))}
-                                          className='mt-1 block w-full rounded-lg border border-stone-300 bg-white p-2 text-sm'>
-                                          <option value=''>Choose clock-out punch</option>
-                                          {matchingOuts.map((candidate) => (
-                                            <option key={candidate.id} value={candidate.id}>{formatDateTime(candidate.occurred_at)}</option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                    )}
-                                    <label className='mt-3 block text-sm font-semibold text-stone-700'>
-                                      Manager review reason (required)
-                                      <input type='text' value={offlineNotes[event.id] || ''}
-                                        onChange={(e) => setOfflineNotes((old) => ({ ...old, [event.id]: e.target.value }))}
-                                        placeholder='e.g. Confirmed against schedule'
-                                        className='mt-1 block w-full rounded-lg border border-stone-300 bg-white p-2 text-sm'/>
-                                    </label>
-                                    <div className='mt-3 flex flex-wrap gap-2'>
-                                      {event.event_type === 'in' && (
-                                        <button type='button'
-                                          disabled={offlineReviewBusyId !== null || connectionUnavailable || !offlineOutSelections[event.id]}
-                                          onClick={() => void approveOfflinePair(event, offlineOutSelections[event.id])}
-                                          className='rounded-lg bg-[#2f352b] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'>
-                                          Approve matched shift
-                                        </button>
-                                      )}
-                                      <button type='button' disabled={offlineReviewBusyId !== null || connectionUnavailable}
-                                        onClick={() => void rejectOfflinePunch(event.id)}
-                                        className='rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50'>
-                                        Reject this punch
-                                      </button>
-                                    </div>
-                                  </div>
-                                )
-                              })}
                             </section>
                           )}
 
@@ -2903,10 +2592,7 @@ function App() {
           )}
 
           <footer className='py-6 text-center text-xs text-stone-500'>
-            <a href='/' className='font-semibold text-[#42523d] underline underline-offset-4'>
-              ← Employee time clock
-            </a>
-            <p className='mt-2'>Hapgood Management Dashboard</p>
+            <p>Hapgood Management Dashboard</p>
           </footer>
         </div>
       </main>
