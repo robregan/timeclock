@@ -152,6 +152,7 @@ const translations = {
     correctionApproved: 'Correction approved',
     correctionRejected: 'Correction rejected',
     employeeFooter: 'Hapgood Employee Time Clock',
+    managerDashboard: 'Manager dashboard',
     shiftCorrection: 'Shift Correction',
     requestChange: 'Request a change',
     managerApprovalNotice: 'This request must be approved by a manager.',
@@ -246,6 +247,7 @@ const translations = {
     correctionApproved: 'Corrección aprobada',
     correctionRejected: 'Corrección rechazada',
     employeeFooter: 'Reloj de empleados de Hapgood',
+    managerDashboard: 'Panel del gerente',
     shiftCorrection: 'Corrección de turno',
     requestChange: 'Solicitar un cambio',
     managerApprovalNotice: 'Esta solicitud debe ser aprobada por un gerente.',
@@ -1998,6 +2000,16 @@ function App() {
             </p>
           </header>
 
+          {/* In-scope navigation keeps IndexedDB offline punches in this installed PWA. */}
+          <nav className='mb-4 flex justify-end'>
+            <a
+              href={isManagerRoute ? '/' : '/manager'}
+              className='rounded-lg px-3 py-2 text-sm font-semibold text-[#42523d] underline underline-offset-4 hover:text-[#2f352b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#42523d]'
+            >
+              {isManagerRoute ? '← Employee time clock' : loginT.managerDashboard + ' →'}
+            </a>
+          </nav>
+
           <form
             className='rounded-3xl border border-stone-200 bg-white p-6 shadow-[0_20px_60px_rgba(67,62,51,0.12)] sm:p-8'
             onSubmit={logIn}
@@ -2891,7 +2903,10 @@ function App() {
           )}
 
           <footer className='py-6 text-center text-xs text-stone-500'>
-            Hapgood Management Dashboard
+            <a href='/' className='font-semibold text-[#42523d] underline underline-offset-4'>
+              ← Employee time clock
+            </a>
+            <p className='mt-2'>Hapgood Management Dashboard</p>
           </footer>
         </div>
       </main>
