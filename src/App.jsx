@@ -1,8 +1,53 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { listOfflinePunches, recordOfflinePunch, removeSyncedPunch } from './offlinePunchStore'
 
 const AUTO_LOGOUT_MINUTES = 5
 const AUTO_LOGOUT_MS = AUTO_LOGOUT_MINUTES * 60 * 1000
+
+// Names and IDs only. Never cache a PIN, PIN hash, shift, or payroll information.
+// Including the Supabase URL keeps development and production rosters separate.
+const ROSTER_CACHE_KEY = `shiftclock:roster:v1:${import.meta.env.VITE_SUPABASE_URL}`
+
+function readCachedRoster() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ROSTER_CACHE_KEY) || 'null')
+    if (!saved || !Array.isArray(saved.employees)) return null
+    if (typeof saved.savedAt !== 'number' || !Number.isFinite(saved.savedAt)) return null
+
+    const employees = saved.employees.filter(
+      (employee) =>
+        typeof employee.id === 'string' &&
+        typeof employee.name === 'string' &&
+        employee.can_clock === true,
+    )
+    return { employees, savedAt: saved.savedAt }
+  } catch {
+    return null
+  }
+}
+
+function isNetworkFailure(error) {
+  if (!navigator.onLine) return true
+  const message = String(error?.message ?? '')
+  return /failed to fetch|fetch failed|networkerror|network request failed|err_internet_disconnected|econn|enotfound|timeout/i.test(message)
+}
+
+function saveRoster(employees, savedAt) {
+  try {
+    localStorage.setItem(ROSTER_CACHE_KEY, JSON.stringify({
+      savedAt,
+      employees: employees.map((employee) => ({
+        id: employee.id,
+        name: employee.name,
+        can_clock: true,
+      })),
+    }))
+  } catch (error) {
+    // The online clock still works if local storage is disabled or full.
+    console.warn('Could not save employee roster locally:', error)
+  }
+}
 
 function getStartOfWeek(date) {
   const result = new Date(date)
@@ -114,8 +159,23 @@ const translations = {
     correctClockIn: 'Correct clock-in',
     correctClockOut: 'Correct clock-out',
     reason: 'Reason',
-    // reasonHelp: 'Required · minimum 3 characters',
     reasonTooShort: 'Please enter a reason (at least 3 characters).',
+    offlinePunchHeading: 'Offline punch · unverified',
+    offlinePunchExplainer: 'Choose your name, then record a clock-in or clock-out. No PIN can be verified offline. The punch stays on this device until a manager syncs and approves it. It is NOT yet payroll time.',
+    offlineClockIn: 'Record offline clock-in',
+    offlineClockOut: 'Record offline clock-out',
+    offlineSaved: 'Saved on this device. A manager must sync and review it before it counts toward payroll.',
+    offlineStoreError: 'Could not save this punch. Please notify a manager and write down the time.',
+    offlineQueued: 'Unsynced punches on this device',
+
+    connectionUnavailable: 'Unable to reach ShiftClock. Online clock-in and PIN verification are unavailable.',
+    cachedRosterNotice: 'Showing the last saved employee list. Names may be out of date.',
+    noCachedRoster: 'Connect to the internet once to save the employee list on this device.',
+    savedRosterAt: 'Employee list saved',
+    retryConnection: 'Retry connection',
+    offlineLogin: 'No hours have been recorded. Please reconnect before clocking in or out.',
+    pinServerError: 'Could not reach the server to verify your PIN. Try again when connected.',
+    offlineActionsNote: 'Clocking in, corrections, and manager changes require a connection.',
     reasonPlaceholder: 'Example: I forgot to clock out before leaving.',
     submitting: 'Submitting...',
     submitCorrection: 'Submit Correction Request',
@@ -193,8 +253,23 @@ const translations = {
     correctClockIn: 'Hora correcta de entrada',
     correctClockOut: 'Hora correcta de salida',
     reason: 'Motivo',
-    reasonHelp: 'Obligatorio · mínimo 3 caracteres',
     reasonTooShort: 'Escribe un motivo (al menos 3 caracteres).',
+    offlinePunchHeading: 'Registro sin conexión · sin verificar',
+    offlinePunchExplainer: 'Selecciona tu nombre y registra entrada o salida. Sin internet no se puede verificar el PIN. El registro queda en este dispositivo hasta que el gerente lo sincronice y apruebe. Aún NO cuenta como horas de nómina.',
+    offlineClockIn: 'Guardar entrada sin conexión',
+    offlineClockOut: 'Guardar salida sin conexión',
+    offlineSaved: 'Guardado en este dispositivo. El gerente debe sincronizarlo y revisarlo antes de contar las horas.',
+    offlineStoreError: 'No se pudo guardar. Avisa al gerente y anota la hora.',
+    offlineQueued: 'Registros pendientes de sincronizar',
+
+    connectionUnavailable: 'Sin conexión con ShiftClock. No se puede registrar la entrada ni verificar el PIN.',
+    cachedRosterNotice: 'Se muestra la última lista de empleados guardada. Puede estar desactualizada.',
+    noCachedRoster: 'Conéctate a internet una vez para guardar la lista de empleados en este dispositivo.',
+    savedRosterAt: 'Lista de empleados guardada',
+    retryConnection: 'Reintentar conexión',
+    offlineLogin: 'No se registraron horas. Conéctate antes de marcar entrada o salida.',
+    pinServerError: 'No se pudo conectar al servidor para verificar el PIN. Inténtalo cuando haya conexión.',
+    offlineActionsNote: 'Para registrar horas o hacer cambios se necesita conexión.',
     reasonPlaceholder: 'Ejemplo: Olvidé marcar la salida antes de irme.',
     submitting: 'Enviando...',
     submitCorrection: 'Enviar solicitud de corrección',
@@ -269,10 +344,50 @@ function LanguageToggle({ language, onChange }) {
   )
 }
 
+function ConnectionNotice({ t, usingCachedRoster, rosterSavedAt, onRetry, loading, showRosterDetails = true }) {
+  return (
+    <div role='status' className='mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950'>
+      <p className='font-semibold'>{t.connectionUnavailable}</p>
+      <p className='mt-2'>
+        {showRosterDetails
+          ? (usingCachedRoster ? t.cachedRosterNotice : t.noCachedRoster)
+          : t.offlineActionsNote}
+      </p>
+      {showRosterDetails && usingCachedRoster && rosterSavedAt && (
+        <p className='mt-1 text-xs text-amber-800'>
+          {t.savedRosterAt}: {formatDateTime(rosterSavedAt)}
+        </p>
+      )}
+      <button
+        type='button'
+        onClick={onRetry}
+        disabled={loading}
+        className='mt-3 rounded-lg border border-amber-400 bg-white px-3 py-2 font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-50'
+      >
+        {t.retryConnection}
+      </button>
+    </div>
+  )
+}
+
 function App() {
   const isManagerRoute = window.location.pathname === '/manager'
 
   const [employees, setEmployees] = useState([])
+  const [offlineQueue, setOfflineQueue] = useState([])
+  const [pendingOfflinePunches, setPendingOfflinePunches] = useState([])
+  const [offlineNotice, setOfflineNotice] = useState('')
+  const [offlineBusy, setOfflineBusy] = useState(false)
+  const [offlineReviewBusyId, setOfflineReviewBusyId] = useState(null)
+  const [offlineOutSelections, setOfflineOutSelections] = useState({})
+  const [offlineNotes, setOfflineNotes] = useState({})
+  const [offlineReviewLoadFailed, setOfflineReviewLoadFailed] = useState(false)
+
+  const [browserOnline, setBrowserOnline] = useState(() => navigator.onLine)
+  const [serverUnavailable, setServerUnavailable] = useState(false)
+  const [usingCachedRoster, setUsingCachedRoster] = useState(false)
+  const [rosterSavedAt, setRosterSavedAt] = useState(null)
+  const connectionUnavailable = !browserOnline || serverUnavailable
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [pin, setPin] = useState('')
   const [loggedInEmployee, setLoggedInEmployee] = useState(null)
@@ -326,12 +441,8 @@ function App() {
     formatDateForInput(addDays(currentWeekStart, 6)),
   )
 
-  const [appliedStartDate, setAppliedStartDate] = useState(() =>
-    formatDateForInput(currentWeekStart),
-  )
-  const [appliedEndDate, setAppliedEndDate] = useState(() =>
-    formatDateForInput(addDays(currentWeekStart, 6)),
-  )
+  const [appliedStartDate, setAppliedStartDate] = useState(() => formatDateForInput(currentWeekStart))
+  const [appliedEndDate, setAppliedEndDate] = useState(() => formatDateForInput(addDays(currentWeekStart, 6)))
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -340,7 +451,25 @@ function App() {
   const [currentTime, setCurrentTime] = useState(new Date())
 
   useEffect(() => {
-    loadEmployees()
+    void loadEmployees()
+    void refreshOfflineQueue()
+
+    function handleOnline() {
+      setBrowserOnline(true)
+      void loadEmployees()
+      void refreshOfflineQueue()
+    }
+
+    function handleOffline() {
+      setBrowserOnline(false)
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
   }, [])
 
   useEffect(() => {
@@ -440,9 +569,153 @@ function App() {
     setPin('')
   }
 
+  async function refreshOfflineQueue() {
+    try {
+      setOfflineQueue(await listOfflinePunches())
+    } catch (error) {
+      console.error('Could not read offline punch queue:', error)
+      setOfflineNotice(translations[isManagerRoute ? 'en' : language].offlineStoreError)
+    }
+  }
+
+  async function saveOfflineEvent(eventType) {
+    if (offlineBusy || !connectionUnavailable || isManagerRoute) return
+    const employee = employees.find((item) => item.id === selectedEmployeeId)
+    if (!employee) {
+      setOfflineNotice(t.errors.employeeNotFound)
+      return
+    }
+    setOfflineBusy(true)
+    setOfflineNotice('')
+    try {
+      // These are *claims* made from a shared device, not verified time entries.
+      const punch = await recordOfflinePunch({
+        employeeId: employee.id,
+        employeeName: employee.name,
+        eventType,
+      })
+      await refreshOfflineQueue()
+      setOfflineNotice(`${t.offlineSaved} ${formatDateTime(punch.occurred_at)}`)
+    } catch (error) {
+      console.error('Could not save offline punch:', error)
+      setOfflineNotice(t.offlineStoreError)
+    } finally {
+      setOfflineBusy(false)
+    }
+  }
+
+  async function loadPendingOfflinePunches(
+    managerId = loggedInEmployee?.id,
+    managerPin = pin,
+  ) {
+    if (!managerId || !managerPin) return
+    const { data, error } = await supabase.rpc('get_pending_offline_punches', {
+      p_manager_id: managerId,
+      p_manager_pin: managerPin,
+    })
+    if (error) {
+      console.error('Could not load offline punches:', error)
+      setOfflineReviewLoadFailed(true)
+      setPendingOfflinePunches([])
+    } else {
+      setOfflineReviewLoadFailed(false)
+      setPendingOfflinePunches(data ?? [])
+    }
+  }
+
+  async function syncOfflineQueue() {
+    if (!isManagerRoute || !loggedInEmployee || offlineBusy || connectionUnavailable) return
+    setOfflineBusy(true)
+    setErrorMessage('')
+    try {
+      // Manager authentication is required for *each* RPC; this is not
+      // an anonymous auto-sync and nothing goes directly into payroll.
+      const punches = await listOfflinePunches()
+      let synced = 0
+      for (const punch of punches) {
+        const { error } = await supabase.rpc('submit_offline_punch_for_review', {
+          p_manager_id: loggedInEmployee.id,
+          p_manager_pin: pin,
+          p_event_id: punch.id,
+          p_employee_id: punch.employee_id,
+          p_event_type: punch.event_type,
+          p_occurred_at: punch.occurred_at,
+          p_device_id: punch.device_id,
+        })
+        if (error) throw error
+        // Delete only after server acknowledgment. Retried UUIDs are idempotent.
+        await removeSyncedPunch(punch.id)
+        synced += 1
+      }
+      setSuccessMessage(`${synced} offline punches synced for manager review. None were added to payroll.`)
+      await loadPendingOfflinePunches()
+    } catch (error) {
+      console.error('Offline sync failed:', error)
+      setErrorMessage(`Offline sync interrupted: ${error.message}. Unsynced punches remain on this device.`)
+    } finally {
+      await refreshOfflineQueue()
+      setOfflineBusy(false)
+    }
+  }
+
+  function offlineForEmployee(employeeId) {
+    return pendingOfflinePunches.filter((event) => event.employee_id === employeeId)
+  }
+
+  async function approveOfflinePair(inEvent, outEventId) {
+    const note = (offlineNotes[inEvent.id] || '').trim()
+    if (!outEventId || note.length < 3) {
+      setErrorMessage('Choose a matching clock-out and enter an approval reason (at least 3 characters).')
+      return
+    }
+    setOfflineReviewBusyId(inEvent.id)
+    setErrorMessage('')
+    const { error } = await supabase.rpc('manager_approve_offline_pair', {
+      p_manager_id: loggedInEmployee.id,
+      p_manager_pin: pin,
+      p_clock_in_event_id: inEvent.id,
+      p_clock_out_event_id: outEventId,
+      p_manager_note: note,
+    })
+    if (error) {
+      console.error('Offline approval failed:', error)
+      setErrorMessage(error.message || 'Could not approve these punches.')
+    } else {
+      setOfflineOutSelections((old) => ({ ...old, [inEvent.id]: '' }))
+      setSuccessMessage('Offline shift reviewed and added to recorded hours.')
+      await refreshManagerDashboard()
+    }
+    setOfflineReviewBusyId(null)
+  }
+
+  async function rejectOfflinePunch(eventId) {
+    const note = (offlineNotes[eventId] || '').trim()
+    if (note.length < 3) {
+      setErrorMessage('Enter a rejection reason (at least 3 characters).')
+      return
+    }
+    setOfflineReviewBusyId(eventId)
+    setErrorMessage('')
+    const { error } = await supabase.rpc('manager_reject_offline_punch', {
+      p_manager_id: loggedInEmployee.id,
+      p_manager_pin: pin,
+      p_event_id: eventId,
+      p_manager_note: note,
+    })
+    if (error) {
+      console.error('Offline rejection failed:', error)
+      setErrorMessage(error.message || 'Could not reject this punch.')
+    } else {
+      setSuccessMessage('Unverified offline punch rejected. Recorded hours unchanged.')
+      await refreshManagerDashboard()
+    }
+    setOfflineReviewBusyId(null)
+  }
+
   async function loadEmployees() {
     setLoading(true)
     setErrorMessage('')
+    setBrowserOnline(navigator.onLine)
 
     const employeeListFunction = isManagerRoute
       ? 'list_active_managers'
@@ -451,15 +724,44 @@ function App() {
     const { data, error } = await supabase.rpc(employeeListFunction)
 
     if (error) {
-      console.error(error)
-      setErrorMessage(translations[loginLanguage].errors.loadEmployees)
-    } else {
-      setEmployees(data ?? [])
+      console.error('Employee list fetch failed:', error)
+      const isDisconnected = isNetworkFailure(error)
+      setServerUnavailable(isDisconnected)
 
-      if (data?.length) {
-        setSelectedEmployeeId(data[0].id)
+      // Manager accounts aren't cached; don't mistake API permission errors for being offline.
+      const saved = isDisconnected && !isManagerRoute ? readCachedRoster() : null
+      if (saved) {
+        setEmployees(saved.employees)
+        setSelectedEmployeeId((current) =>
+          saved.employees.some((employee) => employee.id === current)
+            ? current
+            : saved.employees[0]?.id || '',
+        )
+        setUsingCachedRoster(true)
+        setRosterSavedAt(saved.savedAt)
       } else {
+        setEmployees([])
         setSelectedEmployeeId('')
+        setUsingCachedRoster(false)
+        setRosterSavedAt(null)
+      }
+      if (!isDisconnected) {
+        setErrorMessage(translations[isManagerRoute ? 'en' : language].errors.loadEmployees)
+      }
+    } else {
+      const employeeList = data ?? []
+      setServerUnavailable(false)
+      setEmployees(employeeList)
+      setSelectedEmployeeId((current) =>
+        employeeList.some((employee) => employee.id === current)
+          ? current
+          : employeeList[0]?.id || '',
+      )
+      setUsingCachedRoster(false)
+      if (!isManagerRoute) {
+        const savedAt = Date.now()
+        saveRoster(employeeList, savedAt)
+        setRosterSavedAt(savedAt)
       }
     }
 
@@ -482,6 +784,12 @@ function App() {
   async function logIn(event = null, pinOverride = pin) {
     event?.preventDefault()
 
+    if (connectionUnavailable) {
+      setErrorMessage(loginT.offlineLogin)
+      setPin('')
+      return
+    }
+
     const pinToUse = pinOverride
 
     if (!selectedEmployeeId || pinToUse.length !== 4) {
@@ -497,14 +805,24 @@ function App() {
       p_pin: pinToUse,
     })
 
-    if (error || data !== true) {
-      console.error(error)
+    if (error) {
+      console.error('PIN verification failed:', error)
+      const isDisconnected = isNetworkFailure(error)
+      setServerUnavailable(isDisconnected)
+      setErrorMessage(isDisconnected ? loginT.pinServerError : error.message || loginT.pinServerError)
+      setPin('')
+      setSubmitting(false)
+      return
+    }
+
+    if (data !== true) {
       setErrorMessage(loginT.errors.incorrectPin)
       setPin('')
       setSubmitting(false)
       return
     }
 
+    setServerUnavailable(false)
     const employee = employees.find((item) => item.id === selectedEmployeeId)
 
     if (!employee) {
@@ -681,6 +999,7 @@ function App() {
     await Promise.all([
       loadManagerTotals(managerId, managerPin, reportStartDate, reportEndDate),
       loadPendingCorrections(managerId, managerPin),
+      loadPendingOfflinePunches(managerId, managerPin),
     ])
   }
 
@@ -703,9 +1022,7 @@ function App() {
     if (error) {
       console.error(error)
       setPendingLoadFailed(true)
-      setErrorMessage(
-        'Could not load pending correction requests. Provisional totals may be incomplete.',
-      )
+      setErrorMessage('Could not load pending correction requests. Provisional totals may be incomplete.')
       setPendingCorrections([])
     } else {
       setPendingLoadFailed(false)
@@ -752,6 +1069,10 @@ function App() {
     if (!loggedInEmployee || activeEntry || submitting || isManagerRoute) {
       return
     }
+    if (connectionUnavailable) {
+      setErrorMessage(t.offlineLogin)
+      return
+    }
 
     setSubmitting(true)
     setErrorMessage('')
@@ -778,6 +1099,10 @@ function App() {
 
   async function clockOut() {
     if (!loggedInEmployee || !activeEntry || submitting || isManagerRoute) {
+      return
+    }
+    if (connectionUnavailable) {
+      setErrorMessage(t.offlineLogin)
       return
     }
 
@@ -881,10 +1206,7 @@ function App() {
       return 'This approval would create overlapping shifts. Reject this request or remove the conflicting shift first.'
     }
 
-    if (
-      message.includes('manager_approve_edited_request') ||
-      message.includes('schema cache')
-    ) {
+    if (message.includes('manager_approve_edited_request') || message.includes('schema cache')) {
       return 'The Edit & Approve database function is not installed. Run the companion SQL file in Supabase.'
     }
 
@@ -969,6 +1291,10 @@ function App() {
 
   async function submitManagerShiftForm(event) {
     event.preventDefault()
+    if (connectionUnavailable) {
+      setErrorMessage('Connection required to save manager edits.')
+      return
+    }
 
     if (
       !managerShiftClockIn ||
@@ -1035,6 +1361,10 @@ function App() {
 
   async function submitCorrectionRequest(event) {
     event.preventDefault()
+    if (connectionUnavailable) {
+      setErrorMessage(t.offlineLogin)
+      return
+    }
 
     const hasMissingTimes =
       (requestMode === 'correction' && !selectedShift) ||
@@ -1114,23 +1444,19 @@ function App() {
     if (!loggedInEmployee || reviewingRequestId || !isManagerRoute) {
       return
     }
+    if (connectionUnavailable) {
+      setErrorMessage('Connection required to review requests.')
+      return
+    }
 
     if (decision === 'approved') {
-      const request = pendingCorrections.find(
-        (item) => item.request_id === requestId,
-      )
+      const request = pendingCorrections.find((item) => item.request_id === requestId)
       const proposedHours = request
-        ? (new Date(request.requested_clock_out) -
-            new Date(request.requested_clock_in)) /
-          3600000
+        ? (new Date(request.requested_clock_out) - new Date(request.requested_clock_in)) / 3600000
         : 0
-      if (
-        proposedHours > 16 &&
-        !window.confirm(
-          `This request spans ${proposedHours.toFixed(1)} hours. Double-check the dates and times before approving. Continue?`,
-        )
-      )
-        return
+      if (proposedHours > 16 && !window.confirm(
+        `This request spans ${proposedHours.toFixed(1)} hours. Double-check the dates and times before approving. Continue?`,
+      )) return
     }
 
     setReviewingRequestId(requestId)
@@ -1153,9 +1479,7 @@ function App() {
       setActiveManagerNoteId(null)
 
       await refreshManagerDashboard()
-      setSuccessMessage(
-        decision === 'approved' ? 'Correction approved.' : 'Request rejected.',
-      )
+      setSuccessMessage(decision === 'approved' ? 'Correction approved.' : 'Request rejected.')
     }
 
     setReviewingRequestId(null)
@@ -1181,31 +1505,28 @@ function App() {
   async function submitEditedPendingRequest(event) {
     event.preventDefault()
     if (!pendingEditRequest || submitting || reviewingRequestId) return
+    if (connectionUnavailable) {
+      setErrorMessage('Connection required to approve an edited request.')
+      return
+    }
 
     const clockIn = new Date(pendingEditClockIn)
     const clockOut = new Date(pendingEditClockOut)
     if (
-      !pendingEditClockIn ||
-      !pendingEditClockOut ||
+      !pendingEditClockIn || !pendingEditClockOut ||
       !Number.isFinite(clockIn.getTime()) ||
       !Number.isFinite(clockOut.getTime()) ||
       clockOut <= clockIn ||
       pendingEditReason.trim().length < 3
     ) {
-      setErrorMessage(
-        'Enter valid clock-in/out times and a reason of at least 3 characters.',
-      )
+      setErrorMessage('Enter valid clock-in/out times and a reason of at least 3 characters.')
       return
     }
 
     const proposedHours = (clockOut - clockIn) / 3600000
-    if (
-      proposedHours > 16 &&
-      !window.confirm(
-        `These times span ${proposedHours.toFixed(1)} hours. Please confirm the dates before saving. Continue?`,
-      )
-    )
-      return
+    if (proposedHours > 16 && !window.confirm(
+      `These times span ${proposedHours.toFixed(1)} hours. Please confirm the dates before saving. Continue?`,
+    )) return
 
     setSubmitting(true)
     setErrorMessage('')
@@ -1250,6 +1571,10 @@ function App() {
 
     setCorrectionRequests([])
     setPendingCorrections([])
+    setPendingOfflinePunches([])
+    setOfflineNotes({})
+    setOfflineOutSelections({})
+    setOfflineNotice('')
     setSelectedShift(null)
     setRequestMode('correction')
     setRequestedClockIn('')
@@ -1432,21 +1757,13 @@ function App() {
         .sort((a, b) => new Date(a.clock_in) - new Date(b.clock_in))
 
       const pending = pendingForEmployee(employee.employee_id)
-      const pendingAdjustment = pending.reduce(
-        (sum, request) => sum + requestAdjustmentSeconds(request),
-        0,
-      )
-      const totalIncludingPending =
-        Number(employee.total_seconds ?? 0) + pendingAdjustment
+      const pendingAdjustment = pending.reduce((sum, request) => sum + requestAdjustmentSeconds(request), 0)
+      const totalIncludingPending = Number(employee.total_seconds ?? 0) + pendingAdjustment
 
       lines.push(employee.employee_name)
       lines.push(`Recorded: ${formatSeconds(employee.total_seconds)}`)
-      lines.push(
-        `Pending adjustment: ${formatSignedSeconds(pendingAdjustment)}`,
-      )
-      lines.push(
-        `Total including pending (unverified): ${formatSeconds(totalIncludingPending)}`,
-      )
+      lines.push(`Pending adjustment: ${formatSignedSeconds(pendingAdjustment)}`)
+      lines.push(`Total including pending (unverified): ${formatSeconds(totalIncludingPending)}`)
       lines.push(`Pending requests: ${pending.length}`)
       lines.push(
         `Shifts: ${employee.shift_count} ${
@@ -1549,52 +1866,28 @@ function App() {
   // Build the display from recorded shifts + pending *adjustments*.
   // Corrections replace the old duration, rather than adding the entire requested shift.
   const rangeStartMs = new Date(`${appliedStartDate}T00:00:00`).getTime()
-  const rangeEndMs = addDays(
-    new Date(`${appliedEndDate}T00:00:00`),
-    1,
-  ).getTime()
+  const rangeEndMs = addDays(new Date(`${appliedEndDate}T00:00:00`), 1).getTime()
 
   function requestTouchesCurrentRange(request) {
     return (
-      clippedShiftSeconds(
-        request.requested_clock_in,
-        request.requested_clock_out,
-        rangeStartMs,
-        rangeEndMs,
-      ) > 0 ||
+      clippedShiftSeconds(request.requested_clock_in, request.requested_clock_out, rangeStartMs, rangeEndMs) > 0 ||
       (request.request_type === 'correction' &&
-        clippedShiftSeconds(
-          request.original_clock_in,
-          request.original_clock_out,
-          rangeStartMs,
-          rangeEndMs,
-        ) > 0)
+        clippedShiftSeconds(request.original_clock_in, request.original_clock_out, rangeStartMs, rangeEndMs) > 0)
     )
   }
 
   function requestAdjustmentSeconds(request) {
     const proposed = clippedShiftSeconds(
-      request.requested_clock_in,
-      request.requested_clock_out,
-      rangeStartMs,
-      rangeEndMs,
+      request.requested_clock_in, request.requested_clock_out, rangeStartMs, rangeEndMs,
     )
-    const recorded =
-      request.request_type === 'correction'
-        ? clippedShiftSeconds(
-            request.original_clock_in,
-            request.original_clock_out,
-            rangeStartMs,
-            rangeEndMs,
-          )
-        : 0
+    const recorded = request.request_type === 'correction'
+      ? clippedShiftSeconds(request.original_clock_in, request.original_clock_out, rangeStartMs, rangeEndMs)
+      : 0
     return proposed - recorded
   }
 
   function pendingForEmployee(employeeId) {
-    return pendingCorrections.filter(
-      (request) => request.employee_id === employeeId,
-    )
+    return pendingCorrections.filter((request) => request.employee_id === employeeId)
   }
 
   function formatSignedSeconds(seconds) {
@@ -1603,15 +1896,24 @@ function App() {
   }
 
   const displayedManagerEmployees = [...managerTotals]
-  const knownEmployeeIds = new Set(
-    managerTotals.map((item) => item.employee_id),
-  )
+  const knownEmployeeIds = new Set(managerTotals.map((item) => item.employee_id))
   for (const employee of clockableEmployees) {
     if (knownEmployeeIds.has(employee.id)) continue
     knownEmployeeIds.add(employee.id)
     displayedManagerEmployees.push({
       employee_id: employee.id,
       employee_name: employee.name,
+      total_seconds: 0,
+      shift_count: 0,
+      currently_clocked_in: false,
+    })
+  }
+  for (const event of pendingOfflinePunches) {
+    if (knownEmployeeIds.has(event.employee_id)) continue
+    knownEmployeeIds.add(event.employee_id)
+    displayedManagerEmployees.push({
+      employee_id: event.employee_id,
+      employee_name: event.employee_name,
       total_seconds: 0,
       shift_count: 0,
       currently_clocked_in: false,
@@ -1629,14 +1931,13 @@ function App() {
     })
   }
   displayedManagerEmployees.sort((a, b) => {
-    const aPending = pendingForEmployee(a.employee_id).length
-    const bPending = pendingForEmployee(b.employee_id).length
+    const aPending = pendingForEmployee(a.employee_id).length + offlineForEmployee(a.employee_id).length
+    const bPending = pendingForEmployee(b.employee_id).length + offlineForEmployee(b.employee_id).length
     return bPending - aPending || a.employee_name.localeCompare(b.employee_name)
   })
 
   const pendingAdjustmentSeconds = pendingCorrections.reduce(
-    (total, request) => total + requestAdjustmentSeconds(request),
-    0,
+    (total, request) => total + requestAdjustmentSeconds(request), 0,
   )
 
   const totalTeamSeconds = managerTotals.reduce(
@@ -1661,6 +1962,16 @@ function App() {
     return (
       <main className='min-h-screen bg-[#f4f0e7] px-4 py-10 text-stone-800 sm:px-6'>
         <div className='mx-auto max-w-md'>
+          {connectionUnavailable && (
+            <ConnectionNotice
+              t={loginT}
+              showRosterDetails={!isManagerRoute}
+              usingCachedRoster={!isManagerRoute && usingCachedRoster}
+              rosterSavedAt={rosterSavedAt}
+              onRetry={() => void loadEmployees()}
+              loading={loading}
+            />
+          )}
           {!isManagerRoute && (
             <div className='mb-6 flex justify-end'>
               <LanguageToggle language={language} onChange={changeLanguage} />
@@ -1759,7 +2070,7 @@ function App() {
                       key={digit}
                       type='button'
                       onClick={() => addPinDigit(String(digit))}
-                      disabled={submitting || pin.length >= 4}
+                      disabled={connectionUnavailable || submitting || pin.length >= 4}
                       className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-stone-300 bg-white text-2xl font-semibold text-stone-900 shadow-sm transition hover:bg-stone-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
                     >
                       {digit}
@@ -1778,7 +2089,7 @@ function App() {
                   <button
                     type='button'
                     onClick={() => addPinDigit('0')}
-                    disabled={submitting || pin.length >= 4}
+                    disabled={connectionUnavailable || submitting || pin.length >= 4}
                     className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-stone-300 bg-white text-2xl font-semibold text-stone-900 shadow-sm transition hover:bg-stone-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
                   >
                     0
@@ -1809,6 +2120,38 @@ function App() {
               </p>
             )}
           </form>
+
+          {!isManagerRoute && connectionUnavailable && employees.length > 0 && (
+            <section className='mt-5 rounded-2xl border border-amber-300 bg-white p-5 shadow-sm'>
+              <h2 className='font-bold text-stone-900'>{t.offlinePunchHeading}</h2>
+              <p className='mt-2 text-sm leading-6 text-stone-700'>{t.offlinePunchExplainer}</p>
+              <p className='mt-3 text-xs text-stone-600'>
+                {t.employee}: <strong>{employees.find((item) => item.id === selectedEmployeeId)?.name || '—'}</strong>
+              </p>
+              <div className='mt-4 grid gap-2 sm:grid-cols-2'>
+                <button type='button' onClick={() => void saveOfflineEvent('in')}
+                  disabled={offlineBusy || !selectedEmployeeId}
+                  className='rounded-xl bg-[#2f352b] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50'>
+                  {t.offlineClockIn}
+                </button>
+                <button type='button' onClick={() => void saveOfflineEvent('out')}
+                  disabled={offlineBusy || !selectedEmployeeId}
+                  className='rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-800 disabled:opacity-50'>
+                  {t.offlineClockOut}
+                </button>
+              </div>
+              <p className='mt-3 text-sm font-semibold text-amber-900'>
+                {t.offlineQueued}: {offlineQueue.length}
+              </p>
+              {offlineNotice && <p role='status' className='mt-3 rounded-xl bg-amber-50 p-3 text-sm text-stone-900'>{offlineNotice}</p>}
+            </section>
+          )}
+
+          {!isManagerRoute && !connectionUnavailable && offlineQueue.length > 0 && (
+            <p className='mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900'>
+              {t.offlineQueued}: {offlineQueue.length}. {t.offlineSaved}
+            </p>
+          )}
         </div>
       </main>
     )
@@ -1818,6 +2161,16 @@ function App() {
     return (
       <main className='min-h-screen bg-[#f4f0e7] px-4 py-6 text-stone-800 sm:px-6 sm:py-10'>
         <div className='mx-auto max-w-4xl'>
+          {connectionUnavailable && (
+            <ConnectionNotice
+              t={loginT}
+              showRosterDetails={false}
+              usingCachedRoster={false}
+              rosterSavedAt={null}
+              onRetry={() => void loadEmployees()}
+              loading={loading}
+            />
+          )}
           {successMessage && (
             <div className='fixed top-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-sm font-semibold text-emerald-800 shadow-lg'>
               {successMessage}
@@ -1919,9 +2272,7 @@ function App() {
               <button
                 type='button'
                 onClick={() => openManagerAddShiftForm()}
-                disabled={
-                  loading || submitting || clockableEmployees.length === 0
-                }
+                disabled={loading || submitting || clockableEmployees.length === 0}
                 className='rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/15 transition hover:bg-white/15 disabled:opacity-50'
               >
                 Add Shift
@@ -1946,9 +2297,28 @@ function App() {
 
           {pendingLoadFailed && (
             <p className='mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 font-semibold text-red-800'>
-              Pending requests could not be loaded. Totals shown here are
-              incomplete until you refresh successfully.
+              Pending requests could not be loaded. Totals shown here are incomplete until you refresh successfully.
             </p>
+          )}
+
+          {(offlineQueue.length > 0 || pendingOfflinePunches.length > 0 || offlineReviewLoadFailed) && (
+            <section className='mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5'>
+              <h2 className='font-semibold text-stone-900'>Offline punches · unverified</h2>
+              <p className='mt-1 text-sm text-stone-700'>
+                {offlineQueue.length} saved on this device awaiting manager sync · {pendingOfflinePunches.length} on the server awaiting review.
+                Offline timestamps are not verified and do not count toward recorded or provisional payroll until approved.
+              </p>
+              {offlineQueue.length > 0 && (
+                <button type='button' onClick={() => void syncOfflineQueue()}
+                  disabled={offlineBusy || connectionUnavailable}
+                  className='mt-3 rounded-xl bg-[#2f352b] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50'>
+                  {offlineBusy ? 'Syncing...' : `Sync ${offlineQueue.length} saved punches for review`}
+                </button>
+              )}
+              {offlineReviewLoadFailed && (
+                <p className='mt-3 font-semibold text-red-700'>Could not load offline punches. Do not treat this review list as complete.</p>
+              )}
+            </section>
           )}
 
           <section className='mb-6 grid gap-4 sm:grid-cols-3'>
@@ -1972,9 +2342,7 @@ function App() {
                 {formatSignedSeconds(pendingAdjustmentSeconds)}
               </p>
               <p className='mt-2 text-xs text-amber-800'>
-                {pendingCorrections.length}{' '}
-                {pendingCorrections.length === 1 ? 'request' : 'requests'}{' '}
-                awaiting review
+                {pendingCorrections.length} {pendingCorrections.length === 1 ? 'request' : 'requests'} awaiting review
               </p>
             </article>
 
@@ -1996,9 +2364,7 @@ function App() {
                 </h2>
                 <p className='mt-1 text-sm text-stone-500'>
                   Recorded and provisional hours from{' '}
-                  {new Date(
-                    `${appliedStartDate}T00:00:00`,
-                  ).toLocaleDateString()}
+                  {new Date(`${appliedStartDate}T00:00:00`).toLocaleDateString()}
                   {' through '}
                   {new Date(`${appliedEndDate}T00:00:00`).toLocaleDateString()}
                 </p>
@@ -2029,17 +2395,12 @@ function App() {
                   const employeeShifts = getManagerShiftsForEmployee(
                     employee.employee_id,
                   )
-                  const employeePending = pendingForEmployee(
-                    employee.employee_id,
-                  )
+                  const employeePending = pendingForEmployee(employee.employee_id)
+                  const employeeOffline = offlineForEmployee(employee.employee_id)
                   const employeeAdjustmentSeconds = employeePending.reduce(
-                    (total, request) =>
-                      total + requestAdjustmentSeconds(request),
-                    0,
+                    (total, request) => total + requestAdjustmentSeconds(request), 0,
                   )
-                  const employeeTotalIncludingPending =
-                    Number(employee.total_seconds ?? 0) +
-                    employeeAdjustmentSeconds
+                  const employeeTotalIncludingPending = Number(employee.total_seconds ?? 0) + employeeAdjustmentSeconds
 
                   return (
                     <article
@@ -2069,10 +2430,12 @@ function App() {
                             )}
                             {employeePending.length > 0 && (
                               <span className='rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800'>
-                                ⚠ {employeePending.length} pending{' '}
-                                {employeePending.length === 1
-                                  ? 'request'
-                                  : 'requests'}
+                                ⚠ {employeePending.length} pending {employeePending.length === 1 ? 'request' : 'requests'}
+                              </span>
+                            )}
+                            {employeeOffline.length > 0 && (
+                              <span className='rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800'>
+                                {employeeOffline.length} unverified offline punches
                               </span>
                             )}
                           </div>
@@ -2097,9 +2460,7 @@ function App() {
                             </p>
                             {employeePending.length > 0 && (
                               <p className='mt-1 text-xs font-semibold text-amber-800'>
-                                Recorded {formatSeconds(employee.total_seconds)}{' '}
-                                · Pending{' '}
-                                {formatSignedSeconds(employeeAdjustmentSeconds)}
+                                Recorded {formatSeconds(employee.total_seconds)} · Pending {formatSignedSeconds(employeeAdjustmentSeconds)}
                               </p>
                             )}
                           </div>
@@ -2112,24 +2473,15 @@ function App() {
                       {isExpanded && (
                         <div className='border-t border-stone-200 bg-white px-4 py-4'>
                           {employeePending.length > 0 && (
-                            <section
-                              className='mb-5 space-y-3'
-                              aria-label='Pending shift requests'
-                            >
+                            <section className='mb-5 space-y-3' aria-label='Pending shift requests'>
                               <h4 className='font-semibold text-amber-900'>
                                 Corrections to review ({employeePending.length})
                               </h4>
                               {employeePending.map((request) => (
-                                <article
-                                  key={request.request_id}
-                                  className='rounded-xl border border-amber-200 bg-amber-50 p-4'
-                                >
+                                <article key={request.request_id} className='rounded-xl border border-amber-200 bg-amber-50 p-4'>
                                   <div className='flex flex-wrap items-center justify-between gap-2'>
                                     <p className='font-semibold text-stone-900'>
-                                      {request.request_type === 'missing_shift'
-                                        ? 'Missed shift'
-                                        : 'Shift correction'}{' '}
-                                      · {formatDate(request.requested_clock_in)}
+                                      {request.request_type === 'missing_shift' ? 'Missed shift' : 'Shift correction'} · {formatDate(request.requested_clock_in)}
                                     </p>
                                     <span className='rounded-full bg-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-900'>
                                       Needs approval
@@ -2137,65 +2489,35 @@ function App() {
                                   </div>
                                   {!requestTouchesCurrentRange(request) && (
                                     <p className='mt-2 text-xs font-semibold text-amber-900'>
-                                      Outside selected report dates · not
-                                      included in the hours above
+                                      Outside selected report dates · not included in the hours above
                                     </p>
                                   )}
                                   {request.request_type === 'correction' && (
                                     <p className='mt-2 text-sm text-stone-600'>
-                                      Recorded:{' '}
-                                      {formatDateTime(
-                                        request.original_clock_in,
-                                      )}{' '}
-                                      –{' '}
-                                      {request.original_clock_out
-                                        ? formatDateTime(
-                                            request.original_clock_out,
-                                          )
-                                        : 'Still open'}
+                                      Recorded: {formatDateTime(request.original_clock_in)} – {request.original_clock_out ? formatDateTime(request.original_clock_out) : 'Still open'}
                                     </p>
                                   )}
                                   <p className='mt-2 text-sm font-semibold text-stone-900'>
-                                    Requested:{' '}
-                                    {formatDateTime(request.requested_clock_in)}{' '}
-                                    –{' '}
-                                    {formatDateTime(
-                                      request.requested_clock_out,
-                                    )}
+                                    Requested: {formatDateTime(request.requested_clock_in)} – {formatDateTime(request.requested_clock_out)}
                                   </p>
                                   {requestTouchesCurrentRange(request) && (
                                     <p className='mt-1 text-xs font-semibold text-amber-900'>
-                                      Pending adjustment for this report:{' '}
-                                      {formatSignedSeconds(
-                                        requestAdjustmentSeconds(request),
-                                      )}
+                                      Pending adjustment for this report: {formatSignedSeconds(requestAdjustmentSeconds(request))}
                                     </p>
                                   )}
                                   <p className='mt-2 text-sm text-stone-700'>
                                     Employee reason: {request.reason}
                                   </p>
-                                  <label
-                                    htmlFor={`manager-note-${request.request_id}`}
-                                    className='mt-3 block text-xs font-semibold text-stone-600'
-                                  >
+                                  <label htmlFor={`manager-note-${request.request_id}`} className='mt-3 block text-xs font-semibold text-stone-600'>
                                     Manager note (optional)
                                   </label>
                                   <textarea
                                     id={`manager-note-${request.request_id}`}
                                     rows={2}
-                                    value={
-                                      activeManagerNoteId === request.request_id
-                                        ? managerNote
-                                        : ''
-                                    }
+                                    value={activeManagerNoteId === request.request_id ? managerNote : ''}
                                     onFocus={() => {
-                                      if (
-                                        activeManagerNoteId !==
-                                        request.request_id
-                                      ) {
-                                        setActiveManagerNoteId(
-                                          request.request_id,
-                                        )
+                                      if (activeManagerNoteId !== request.request_id) {
+                                        setActiveManagerNoteId(request.request_id)
                                         setManagerNote('')
                                       }
                                     }}
@@ -2207,56 +2529,82 @@ function App() {
                                     className='mt-1 w-full resize-none rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm'
                                   />
                                   <div className='mt-3 flex flex-wrap gap-2'>
-                                    <button
-                                      type='button'
-                                      onClick={() =>
-                                        reviewCorrection(
-                                          request.request_id,
-                                          'approved',
-                                        )
-                                      }
-                                      disabled={
-                                        reviewingRequestId !== null ||
-                                        submitting
-                                      }
-                                      className='rounded-lg bg-[#2f352b] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50'
-                                    >
-                                      {reviewingRequestId === request.request_id
-                                        ? 'Saving...'
-                                        : 'Approve'}
+                                    <button type='button' onClick={() => reviewCorrection(request.request_id, 'approved')}
+                                      disabled={reviewingRequestId !== null || submitting}
+                                      className='rounded-lg bg-[#2f352b] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50'>
+                                      {reviewingRequestId === request.request_id ? 'Saving...' : 'Approve'}
                                     </button>
-                                    <button
-                                      type='button'
-                                      onClick={() =>
-                                        openPendingRequestEditor(request)
-                                      }
-                                      disabled={
-                                        reviewingRequestId !== null ||
-                                        submitting
-                                      }
-                                      className='rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 disabled:opacity-50'
-                                    >
+                                    <button type='button' onClick={() => openPendingRequestEditor(request)}
+                                      disabled={reviewingRequestId !== null || submitting}
+                                      className='rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 disabled:opacity-50'>
                                       Edit & Approve
                                     </button>
-                                    <button
-                                      type='button'
-                                      onClick={() =>
-                                        reviewCorrection(
-                                          request.request_id,
-                                          'rejected',
-                                        )
-                                      }
-                                      disabled={
-                                        reviewingRequestId !== null ||
-                                        submitting
-                                      }
-                                      className='rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50'
-                                    >
+                                    <button type='button' onClick={() => reviewCorrection(request.request_id, 'rejected')}
+                                      disabled={reviewingRequestId !== null || submitting}
+                                      className='rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50'>
                                       Reject
                                     </button>
                                   </div>
                                 </article>
                               ))}
+                            </section>
+                          )}
+
+                          {employeeOffline.length > 0 && (
+                            <section className='mb-5 space-y-3' aria-label='Unverified offline punches'>
+                              <h4 className='font-semibold text-orange-900'>Offline punches to review ({employeeOffline.length})</h4>
+                              <p className='text-sm text-stone-600'>Client device clock was not verified. Match a clock-in to its clock-out, check times, and enter a reason before approval. These hours are not in payroll yet.</p>
+                              {employeeOffline.map((event) => {
+                                const matchingOuts = event.event_type === 'in'
+                                  ? employeeOffline.filter((candidate) =>
+                                    candidate.event_type === 'out' &&
+                                    new Date(candidate.occurred_at) > new Date(event.occurred_at) &&
+                                    new Date(candidate.occurred_at) - new Date(event.occurred_at) <= 86400000
+                                  ) : []
+                                return (
+                                  <div key={event.id} className='rounded-xl border border-orange-200 bg-orange-50 p-4'>
+                                    <p className='text-sm font-semibold text-stone-900'>
+                                      {event.event_type === 'in' ? 'Clock IN' : 'Clock OUT'} · {formatDateTime(event.occurred_at)}
+                                    </p>
+                                    <p className='mt-1 text-xs text-orange-900'>Unverified · received {formatDateTime(event.received_at)}</p>
+                                    {event.event_type === 'in' && (
+                                      <label className='mt-3 block text-sm font-semibold text-stone-700'>
+                                        Matching clock-out
+                                        <select value={offlineOutSelections[event.id] || ''}
+                                          onChange={(e) => setOfflineOutSelections((old) => ({ ...old, [event.id]: e.target.value }))}
+                                          className='mt-1 block w-full rounded-lg border border-stone-300 bg-white p-2 text-sm'>
+                                          <option value=''>Choose clock-out punch</option>
+                                          {matchingOuts.map((candidate) => (
+                                            <option key={candidate.id} value={candidate.id}>{formatDateTime(candidate.occurred_at)}</option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    )}
+                                    <label className='mt-3 block text-sm font-semibold text-stone-700'>
+                                      Manager review reason (required)
+                                      <input type='text' value={offlineNotes[event.id] || ''}
+                                        onChange={(e) => setOfflineNotes((old) => ({ ...old, [event.id]: e.target.value }))}
+                                        placeholder='e.g. Confirmed against schedule'
+                                        className='mt-1 block w-full rounded-lg border border-stone-300 bg-white p-2 text-sm'/>
+                                    </label>
+                                    <div className='mt-3 flex flex-wrap gap-2'>
+                                      {event.event_type === 'in' && (
+                                        <button type='button'
+                                          disabled={offlineReviewBusyId !== null || connectionUnavailable || !offlineOutSelections[event.id]}
+                                          onClick={() => void approveOfflinePair(event, offlineOutSelections[event.id])}
+                                          className='rounded-lg bg-[#2f352b] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'>
+                                          Approve matched shift
+                                        </button>
+                                      )}
+                                      <button type='button' disabled={offlineReviewBusyId !== null || connectionUnavailable}
+                                        onClick={() => void rejectOfflinePunch(event.id)}
+                                        className='rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50'>
+                                        Reject this punch
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              })}
                             </section>
                           )}
 
@@ -2304,23 +2652,8 @@ function App() {
                                         onClick={() =>
                                           openManagerEditShiftForm(shift)
                                         }
-                                        disabled={
-                                          submitting ||
-                                          employeePending.some(
-                                            (request) =>
-                                              request.time_entry_id ===
-                                              shift.entry_id,
-                                          )
-                                        }
-                                        title={
-                                          employeePending.some(
-                                            (request) =>
-                                              request.time_entry_id ===
-                                              shift.entry_id,
-                                          )
-                                            ? 'Review the pending correction above instead'
-                                            : 'Edit this recorded shift'
-                                        }
+                                        disabled={submitting || employeePending.some((request) => request.time_entry_id === shift.entry_id)}
+                                        title={employeePending.some((request) => request.time_entry_id === shift.entry_id) ? 'Review the pending correction above instead' : 'Edit this recorded shift'}
                                         className='rounded-full border border-stone-300 bg-white px-3 py-1 text-xs font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
                                       >
                                         Edit
@@ -2365,100 +2698,46 @@ function App() {
           {pendingEditRequest && (
             <div className='fixed inset-0 z-50 flex items-end justify-center bg-stone-950/45 px-4 py-6 sm:items-center'>
               <div className='max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8'>
-                <h2 className='text-xl font-semibold text-stone-900'>
-                  Edit & Approve Request
-                </h2>
+                <h2 className='text-xl font-semibold text-stone-900'>Edit & Approve Request</h2>
                 <p className='mt-2 text-sm text-stone-600'>
-                  {pendingEditRequest.employee_name} · Submitted{' '}
-                  {formatDateTime(pendingEditRequest.created_at)}
+                  {pendingEditRequest.employee_name} · Submitted {formatDateTime(pendingEditRequest.created_at)}
                 </p>
                 <p className='mt-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900'>
-                  Original employee request:{' '}
-                  {formatDateTime(pendingEditRequest.requested_clock_in)} –{' '}
-                  {formatDateTime(pendingEditRequest.requested_clock_out)}
+                  Original employee request: {formatDateTime(pendingEditRequest.requested_clock_in)} – {formatDateTime(pendingEditRequest.requested_clock_out)}
                 </p>
                 {errorMessage && (
                   <p className='mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800'>
                     {errorMessage}
                   </p>
                 )}
-                <form
-                  onSubmit={submitEditedPendingRequest}
-                  className='mt-5 space-y-4'
-                >
+                <form onSubmit={submitEditedPendingRequest} className='mt-5 space-y-4'>
                   <div>
-                    <label
-                      htmlFor='pending-edit-clock-in'
-                      className='mb-1 block text-sm font-semibold'
-                    >
-                      Approved clock-in
-                    </label>
-                    <input
-                      id='pending-edit-clock-in'
-                      type='datetime-local'
-                      required
-                      value={pendingEditClockIn}
-                      onChange={(event) =>
-                        setPendingEditClockIn(event.target.value)
-                      }
-                      className='w-full rounded-xl border border-stone-300 px-3 py-3'
-                    />
+                    <label htmlFor='pending-edit-clock-in' className='mb-1 block text-sm font-semibold'>Approved clock-in</label>
+                    <input id='pending-edit-clock-in' type='datetime-local' required value={pendingEditClockIn}
+                      onChange={(event) => setPendingEditClockIn(event.target.value)}
+                      className='w-full rounded-xl border border-stone-300 px-3 py-3' />
                   </div>
                   <div>
-                    <label
-                      htmlFor='pending-edit-clock-out'
-                      className='mb-1 block text-sm font-semibold'
-                    >
-                      Approved clock-out
-                    </label>
-                    <input
-                      id='pending-edit-clock-out'
-                      type='datetime-local'
-                      required
-                      value={pendingEditClockOut}
-                      onChange={(event) =>
-                        setPendingEditClockOut(event.target.value)
-                      }
-                      className='w-full rounded-xl border border-stone-300 px-3 py-3'
-                    />
+                    <label htmlFor='pending-edit-clock-out' className='mb-1 block text-sm font-semibold'>Approved clock-out</label>
+                    <input id='pending-edit-clock-out' type='datetime-local' required value={pendingEditClockOut}
+                      onChange={(event) => setPendingEditClockOut(event.target.value)}
+                      className='w-full rounded-xl border border-stone-300 px-3 py-3' />
                   </div>
                   <div>
-                    <label
-                      htmlFor='pending-edit-reason'
-                      className='mb-1 block text-sm font-semibold'
-                    >
-                      Manager reason (required)
-                    </label>
-                    <textarea
-                      id='pending-edit-reason'
-                      value={pendingEditReason}
-                      required
-                      rows={3}
-                      onChange={(event) =>
-                        setPendingEditReason(event.target.value)
-                      }
+                    <label htmlFor='pending-edit-reason' className='mb-1 block text-sm font-semibold'>Manager reason (required)</label>
+                    <textarea id='pending-edit-reason' value={pendingEditReason} required rows={3}
+                      onChange={(event) => setPendingEditReason(event.target.value)}
                       placeholder='Why are you changing the requested times?'
-                      className='w-full rounded-xl border border-stone-300 px-3 py-3'
-                    />
+                      className='w-full rounded-xl border border-stone-300 px-3 py-3' />
                   </div>
-                  <p className='text-xs text-stone-500'>
-                    Saving approves these times and preserves the originally
-                    submitted times in the request edit history.
-                  </p>
+                  <p className='text-xs text-stone-500'>Saving approves these times and preserves the originally submitted times in the request edit history.</p>
                   <div className='flex flex-wrap gap-3'>
-                    <button
-                      type='submit'
-                      disabled={submitting}
-                      className='rounded-xl bg-[#2f352b] px-5 py-3 font-semibold text-white disabled:opacity-50'
-                    >
+                    <button type='submit' disabled={submitting}
+                      className='rounded-xl bg-[#2f352b] px-5 py-3 font-semibold text-white disabled:opacity-50'>
                       {submitting ? 'Saving...' : 'Save & Approve'}
                     </button>
-                    <button
-                      type='button'
-                      onClick={closePendingRequestEditor}
-                      disabled={submitting}
-                      className='rounded-xl border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-700 disabled:opacity-50'
-                    >
+                    <button type='button' onClick={closePendingRequestEditor} disabled={submitting}
+                      className='rounded-xl border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-700 disabled:opacity-50'>
                       Cancel
                     </button>
                   </div>
@@ -2622,6 +2901,16 @@ function App() {
   return (
     <main className='min-h-screen bg-[#f4f0e7] px-4 py-6 text-stone-800 sm:px-6 sm:py-10'>
       <div className='mx-auto max-w-2xl'>
+        {connectionUnavailable && (
+          <ConnectionNotice
+            t={t}
+            showRosterDetails={false}
+            usingCachedRoster={usingCachedRoster}
+            rosterSavedAt={rosterSavedAt}
+            onRetry={() => void loadEmployees()}
+            loading={loading}
+          />
+        )}
         {successMessage && (
           <div className='fixed top-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center text-sm font-semibold text-emerald-800 shadow-lg'>
             {successMessage}
@@ -2686,7 +2975,7 @@ function App() {
             <button
               type='button'
               onClick={activeEntry ? clockOut : clockIn}
-              disabled={submitting}
+              disabled={connectionUnavailable || submitting}
               className={`mt-6 w-full max-w-md rounded-2xl px-6 py-4 text-lg font-bold shadow-lg transition focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60 ${
                 activeEntry
                   ? 'bg-[#d8c6a2] text-[#2f352b] hover:bg-[#e2d1ae]'
@@ -2718,7 +3007,7 @@ function App() {
             <button
               type='button'
               onClick={openMissedShiftForm}
-              disabled={submitting}
+              disabled={connectionUnavailable || submitting}
               className='rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50'
             >
               {t.reportMissedShift}
@@ -2847,6 +3136,7 @@ function App() {
                               <button
                                 type='button'
                                 onClick={() => openCorrectionForm(entry)}
+                                disabled={connectionUnavailable}
                                 className='rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-100'
                               >
                                 {t.requestCorrection}
@@ -2963,10 +3253,7 @@ function App() {
                   htmlFor='correction-reason'
                   className='mb-2 block text-sm font-semibold text-stone-700'
                 >
-                  {t.reason}{' '}
-                  <span className='text-red-700' aria-hidden='true'>
-                    *
-                  </span>
+                  {t.reason} <span className='text-red-700' aria-hidden='true'>*</span>
                 </label>
 
                 <textarea
@@ -2983,24 +3270,18 @@ function App() {
                   placeholder={t.reasonPlaceholder}
                   aria-required='true'
                   aria-invalid={showReasonWarning}
-                  aria-describedby='correction-reason-hint'
+                  aria-describedby={showReasonWarning ? 'correction-reason-hint' : undefined}
                   className={`w-full resize-none rounded-xl border bg-stone-50 px-4 py-3 text-stone-900 outline-none focus:ring-4 ${
                     showReasonWarning
                       ? 'border-red-500 focus:border-red-600 focus:ring-red-500/15'
                       : 'border-stone-300 focus:border-[#68785b] focus:ring-[#68785b]/15'
                   }`}
                 />
-                <p
-                  id='correction-reason-hint'
-                  role={showReasonWarning ? 'alert' : undefined}
-                  className={`mt-2 text-sm ${
-                    showReasonWarning
-                      ? 'font-medium text-red-700'
-                      : 'text-stone-500'
-                  }`}
-                >
-                  {showReasonWarning ? t.reasonTooShort : t.reasonHelp}
-                </p>
+                {showReasonWarning && (
+                  <p id='correction-reason-hint' role='alert' className='mt-2 text-sm font-medium text-red-700'>
+                    {t.reasonTooShort}
+                  </p>
+                )}
               </div>
 
               {errorMessage && (
