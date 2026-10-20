@@ -10,8 +10,6 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
-      // Two static manifests: employee at / and manager at /manager/.
-      // Do not inject a single site-wide manifest into both HTML pages.
       manifest: false,
       workbox: {
         navigateFallback: '/index.html',
@@ -22,10 +20,18 @@ export default defineConfig({
       },
     }),
   ],
-  input: {
-    employee: fileURLToPath(new URL('./index.html', import.meta.url)),
-    manager: fileURLToPath(new URL('./manager/index.html', import.meta.url)),
+
+  build: {
+    rolldownOptions: {
+      input: {
+        employee: fileURLToPath(new URL('./index.html', import.meta.url)),
+        manager: fileURLToPath(
+          new URL('./manager/index.html', import.meta.url),
+        ),
+      },
+    },
   },
+
   server: {
     watch: {
       ignored: ['**/supabase/**'],
