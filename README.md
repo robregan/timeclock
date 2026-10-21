@@ -1,394 +1,295 @@
 # Hapgood Clock
 
-A browser-based employee time clock built for a small restaurant team.
+**ShiftClock** is a browser-based employee time clock and manager payroll dashboard built for a small restaurant team. Employees can record their hours, review shifts, and request corrections; managers can review, adjust, and approve time records before payroll.
 
-Employees can clock in and out, review recent shifts, submit correction requests, and report missed shifts. Managers can review team hours, approve or reject employee requests, inspect individual shift details, and generate reports for custom date ranges.
+The app is responsive, supports English and Spanish for employees, and can be installed on a phone or tablet as **two separate Progressive Web Apps (PWAs)**: an Employee Time Clock and a Manager Dashboard.
 
 ## Live App
 
-https://hapgood-clock.netlify.app
+**Production:** https://hapgood-clock.netlify.app
 
-Employee time clock:
+- **Employee Time Clock:** https://hapgood-clock.netlify.app/
+- **Manager Dashboard:** https://hapgood-clock.netlify.app/manager/
 
-https://hapgood-clock.netlify.app/
-
-Manager dashboard:
-
-https://hapgood-clock.netlify.app/manager
-
-The manager route is intentionally separate from the employee interface.
+The employee and manager screens have separate installation identities and Home Screen launch URLs, while sharing one Netlify site and Supabase database. Manager access is protected by server-side authorization, not simply by having a separate URL.
 
 ## Features
 
 ### Employee Experience
 
-- Secure 4-digit PIN login
-- Employee-only login list
-- Clock in and clock out from any browser
-- Live date and time display
-- Recent shift history
-- Shift duration calculations
-- Submit correction requests for completed shifts
-- Submit missed shift requests when a shift was not clocked at all
-- View request status as pending, approved, or rejected
-- Spanish-first employee interface
-- English and Spanish language toggle
-- Language preference saved in the browser
-- Responsive design for phones, tablets, and desktop
+- Select an employee from a staff-only list and sign in with a four-digit PIN.
+- Clock in and out, with a live date and time display.
+- See whether a shift is active and review recent shifts and durations.
+- Expand the shift history to view additional entries.
+- Request corrected clock-in or clock-out times for an existing shift.
+- Report a completely missed shift with the proposed times and a reason.
+- Track correction and missed-shift requests as pending, approved, or rejected.
+- Use a Spanish-first interface with an English/Spanish language toggle.
+- Remember the selected language on the device.
+- Use a responsive interface on phones, tablets, and desktop browsers.
 
 ### Manager Experience
 
-- Separate hidden manager route at `/manager`
-- Manager login is separate from the employee dropdown
-- View total team hours
-- View totals for each employee
-- See who is currently clocked in
-- Select a custom report date range
-- Review pending correction requests
-- Review pending missed shift requests
-- Compare original and requested shift times for corrections
-- Approve or reject employee requests
-- Add an optional manager note
-- Approved corrections automatically update existing shifts
-- Approved missed shift requests automatically create new time entries
-- Expand employee total cards to view the exact shifts included in the selected date range
-- See shift-level details such as clock-in time, clock-out time, duration, active status, and edited status
+- Separate manager login and installable dashboard at `/manager/`.
+- Review employee hours and total team hours for a selected date range.
+- Use the restaurant's **Tuesday–Monday payroll week**, navigate to previous weeks, or choose custom dates.
+- See which employees are currently clocked in.
+- Expand employee cards to inspect individual shift dates, times, durations, active status, and edit history.
+- View **recorded hours**, **pending adjustments**, and **provisional hours** that include unapproved employee requests.
+- Review correction and missed-shift requests alongside the affected employee's hours.
+- Approve or reject requests, with an optional manager note.
+- **Edit and approve** a pending request when the proposed times need adjustment, recording a reason for the manager's change.
+- **Add a manual shift** for an employee, with required times and an edit reason.
+- **Edit an existing time entry**, with required times and an edit reason.
+- Export a readable **TXT payroll report** for the selected period.
+- Automatically refresh the manager's recorded hours and pending requests after changes.
+
+**Pending requests do not change official time entries or recorded payroll totals until approved.** Provisional totals are presented separately to help managers review expected adjustments.
+
+### Progressive Web Apps
+
+- Two separately installable Home Screen apps on supported devices: **Employee Time Clock** and **Manager Dashboard**.
+- Each app launches directly into its respective route, even though both are hosted on the same site.
+- Web app manifests, app icons, and service-worker caching for the application shell.
+- Separate manager HTML entry point and a service-worker navigation rule that keeps `/manager/` from falling back to the employee page.
+- An online connection is required to verify PINs, record punches, submit requests, and make manager changes.
+
+> **Offline limitations:** ShiftClock does **not** record, queue, or synchronize offline clock-ins or clock-outs. During an internet outage, employees should record their times separately and have a manager add or correct the shift once service returns. The employee roster may be available from a previous local cache, but seeing a name offline does not mean a punch has been recorded.
 
 ## Tech Stack
 
-- React
-- Vite
-- Tailwind CSS
-- Supabase
-- PostgreSQL
+- React 19
+- Vite 8
+- Tailwind CSS 4
 - JavaScript
+- Supabase (PostgreSQL and RPC)
+- `vite-plugin-pwa` / Workbox
+- Netlify
 
 ## Project Structure
 
-- `public/`
-  - `_redirects`
-- `src/`
-  - `App.jsx`
-  - `index.css`
-  - `main.jsx`
-  - `supabaseClient.js`
-- `.env.example`
-- `.gitignore`
-- `index.html`
-- `package.json`
-- `package-lock.json`
-- `vite.config.js`
-- `README.md`
+```text
+public/
+  _redirects
+  employee.webmanifest
+  manager.webmanifest
+  pwa-192x192.png
+  pwa-512x512.png
+manager/
+  index.html
+src/
+  App.jsx
+  index.css
+  main.jsx
+  supabaseClient.js
+index.html
+vite.config.js
+package.json
+package-lock.json
+.env.example
+.gitignore
+README.md
+```
+
+The build generates both `dist/index.html` and `dist/manager/index.html`. The employee and manager manifests are copied into `dist/`.
 
 ## Getting Started
 
 ### Prerequisites
 
-Install:
-
-- Node.js 20.19 or newer
+- Node.js 20.19+ (or another version supported by the installed Vite release)
 - npm
-- A Supabase account
+- A Supabase project with the required schema and RPC functions
 
-### Clone the Repository
+### Clone and install
 
-Run:
+```bash
+git clone https://github.com/robregan/timeclock.git
+cd timeclock
+npm install
+```
 
-    git clone https://github.com/robregan/timeclock.git
-    cd timeclock
+### Configure environment variables
 
-### Install Dependencies
+Copy the example file and provide the credentials for your intended Supabase environment:
 
-Run:
+```bash
+cp .env.example .env.local
+```
 
-    npm install
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+```
 
-### Configure Environment Variables
+Use **development Supabase credentials for local testing**. Never commit `.env.local` or expose a Supabase service-role/secret key in frontend code. Publishable keys are public by design; database authorization must be enforced server-side.
 
-Copy the example file:
+### Run locally
 
-    cp .env.example .env.local
+```bash
+npm run dev
+```
 
-Add your Supabase project values to `.env.local`:
+- Employee: http://localhost:5173/
+- Manager: http://localhost:5173/manager/
 
-    VITE_SUPABASE_URL=your_supabase_project_url
-    VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+To test the built PWA and service worker, use:
 
-Do not commit `.env.local`.
+```bash
+npm run build
+npm run preview
+```
 
-Never expose a Supabase service-role key in the frontend.
+Vite Preview normally runs at `http://localhost:4173`. Service-worker behavior may differ from the ordinary Vite development server.
 
-### Netlify Route Handling
+### Available scripts
 
-The app uses a separate manager route at `/manager`.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start local development |
+| `npm run build` | Create production assets in `dist/` |
+| `npm run preview` | Preview the production build |
+| `npm run lint` | Run ESLint |
 
-The `public/_redirects` file is required so Netlify can serve the React app when someone visits or refreshes `/manager`.
+## Routing and PWA Configuration
 
-The file should contain:
+`index.html` serves the employee time clock and references `employee.webmanifest`.
 
-    /* /index.html 200
+`manager/index.html` serves the manager dashboard and references `manager.webmanifest`. Vite's multi-page build includes both HTML entry points. The React interface recognizes `/manager` and `/manager/` as manager routes.
 
-### Run Locally
+The `public/_redirects` file supplies Netlify's general SPA fallback:
 
-Run:
+```text
+/* /index.html 200
+```
 
-    npm run dev
-
-Vite will display a local address, usually:
-
-    http://localhost:5173
-
-Employee route:
-
-    http://localhost:5173/
-
-Manager route:
-
-    http://localhost:5173/manager
-
-## Available Scripts
-
-Development server:
-
-    npm run dev
-
-Production build:
-
-    npm run build
-
-Preview the production build:
-
-    npm run preview
-
-Run the linter:
-
-    npm run lint
+The real `manager/index.html` output is served at `/manager/`. Workbox excludes manager navigation from the employee `index.html` fallback so the installed manager PWA opens the correct page.
 
 ## Database Overview
 
+The application uses PostgreSQL tables and controlled Supabase RPC functions. Core tables include:
+
 ### `employees`
 
-Stores employee and manager accounts.
-
-Important fields:
-
-- `id`
-- `name`
-- `pin_hash`
-- `role`
-- `can_clock`
-- `active`
-- `created_at`
-
-PINs are stored as hashes and are never saved as readable text.
-
-Employees have `can_clock = true`.
-
-The manager has `role = 'manager'` and `can_clock = false`.
+Employee and manager accounts, including `id`, `name`, `pin_hash`, `role`, `can_clock`, `active`, and `created_at`. PINs are stored as hashes rather than readable text. Managers are identified through their role and validated by the database functions they call.
 
 ### `time_entries`
 
-Stores clock-in and clock-out records.
+Recorded shifts, including `id`, `employee_id`, `employee_name`, `clock_in`, `clock_out`, `created_at`, `edited_at`, `edited_by`, and `edit_reason`.
 
-Important fields:
+Production includes database-level safeguards:
 
-- `id`
-- `employee_id`
-- `employee_name`
-- `clock_in`
-- `clock_out`
-- `created_at`
-- `edited_at`
-- `edited_by`
-- `edit_reason`
+- A partial unique index that prevents multiple simultaneously open shifts for one employee.
+- `time_entries_positive_duration`: completed shifts must end after they begin.
+- `no_overlapping_employee_shifts`: shifts for the same employee cannot overlap, including currently open shifts.
 
-A partial unique index prevents an employee from having more than one open shift.
-
-Approved correction requests update existing time entries.
-
-Approved missed shift requests create new time entries.
+These protections apply to employee punches and manager changes. Adjacent shifts are permitted when one ends exactly as the next begins.
 
 ### `shift_correction_requests`
 
-Stores employee requests related to shift records.
+Requests of type `correction` or `missing_shift`, including the employee, requested times, explanation, status, review information, and manager note.
 
-This table supports two request types:
+A correction request references an existing time entry; a missed-shift request proposes a new one. Approved requests update or create time entries, while rejected requests leave recorded payroll unchanged. The employee's original explanation is retained.
 
-- `correction`
-- `missing_shift`
+### `shift_request_edit_log`
 
-Important fields:
+Records changes made when a manager adjusts the proposed times of a pending employee request before approving it, including the original requested times, approved times, manager, and explanation.
 
-- `id`
-- `request_type`
-- `time_entry_id`
-- `employee_id`
-- `requested_clock_in`
-- `requested_clock_out`
-- `reason`
-- `status`
-- `reviewed_by`
-- `reviewed_at`
-- `manager_note`
-- `created_at`
+## Server-Side Functions
 
-Correction requests are linked to an existing `time_entries` row.
+The client accesses timekeeping operations through controlled Supabase RPC functions rather than unrestricted writes to payroll tables.
 
-Missed shift requests are not linked to an existing shift because the employee forgot to clock in or out entirely.
+**Employee operations:**
 
-The original employee note is preserved exactly as submitted for audit purposes.
-
-## Database Functions
-
-The browser does not directly modify protected tables. It calls controlled PostgreSQL functions through Supabase RPC.
-
-Current functions include:
-
-- `list_active_employees`
 - `list_clockable_employees`
-- `list_active_managers`
 - `verify_employee_pin`
 - `clock_in_employee`
 - `clock_out_employee`
 - `get_employee_entries`
-- `get_manager_hour_totals`
-- `get_manager_shift_details`
+- `get_employee_all_entries`
 - `submit_shift_correction`
 - `submit_missed_shift_request`
 - `get_employee_correction_requests`
+
+**Manager operations:**
+
+- `list_active_managers`
+- `get_manager_hour_totals`
+- `get_manager_shift_details`
 - `get_pending_correction_requests`
 - `review_shift_correction`
+- `manager_approve_edited_request`
+- `manager_create_manual_shift`
+- `manager_update_time_entry`
 
-## Employee Request Workflows
+These functions validate credentials, enforce relevant business rules, and return the records needed by the UI.
 
-### Correction Request Workflow
+## Employee Requests and Manager Review
 
-1. An employee selects a completed shift.
-2. The employee submits corrected clock-in and clock-out times with a reason.
-3. The request appears in the manager dashboard.
-4. The manager approves or rejects it.
-5. Approval updates the original shift.
-6. The correction request remains as an audit record.
+**Correct an existing shift:** An employee chooses a completed shift, enters corrected times and a reason, and submits a request. The manager can approve it, reject it, or change the proposed times and approve with a documented explanation. Approved changes update the original time entry.
 
-Employees cannot directly edit payroll records.
+**Report a missed shift:** An employee submits the missing clock-in and clock-out times with a reason. Approval creates a new time entry; rejection does not alter payroll.
 
-### Missed Shift Request Workflow
+**Manager-entered shifts:** A manager can independently add a missing shift or edit a recorded shift. Both operations require a reason and are subject to database validation against invalid times and overlaps.
 
-1. An employee selects the missed shift option.
-2. The employee enters the missed clock-in time, missed clock-out time, and a reason.
-3. The request appears in the manager dashboard.
-4. The manager approves or rejects it.
-5. Approval creates a new time entry.
-6. The missed shift request remains as an audit record.
+## Payroll Reporting
 
-Employees cannot directly create payroll records.
+Managers can select a custom range or navigate the Tuesday–Monday payroll periods. The dashboard displays employee-level and team-level recorded hours, pending adjustments, provisional totals, shift counts, current clock-in status, and individual shift details.
 
-## Manager Reporting Workflow
+Hours are calculated for the portion of each shift inside the selected reporting window. Pending adjustments are shown separately until approved. Managers can export a text-based report for review before payroll.
 
-Managers can select a custom date range or quickly select the current week.
+## Security and Operational Notes
 
-The dashboard shows:
+- Server-side PIN verification and manager-role checks.
+- Hashed employee PINs and restricted database permissions.
+- Row Level Security on protected tables.
+- Validation of shift duration and overlap at the database level.
+- Reasons and edit metadata retained for manager changes.
+- Automatic sign-out after a period of inactivity.
+- A development Supabase project separate from the production project.
+- Production backups should be stored privately and restore-tested before schema changes.
 
-- Total team hours
-- Number of employees currently clocked in
-- Total hours per employee
-- Shift count per employee
-- Expandable employee cards with individual shift details
-- Pending correction and missed shift requests
-
-Expanded employee cards show the exact shifts included in the selected report period.
-
-This makes it easier to verify hours before payroll.
-
-## Security
-
-Current protections include:
-
-- Hashed PINs using PostgreSQL cryptographic functions
-- Row Level Security enabled on protected tables
-- Restricted direct table permissions
-- Server-side PIN verification
-- Role-based manager authorization
-- Separate employee and manager routes
-- Database-level duplicate open-shift prevention
-- Manager-only request approval
-- Audit fields for approved edits
-- Original request notes preserved
-- Frontend uses only the Supabase publishable key
-
-A 4-digit PIN is appropriate for a small internal workplace app, but it is not strong authentication for sensitive financial or identity systems.
-
-Recommended future hardening:
-
-- Failed-login rate limiting
-- Account lockout after repeated attempts
-- Stronger manager authentication
-- Formal audit log
-- Automated backups
-- Session timeout
-- Optional secure server-side translation for employee request notes
+A four-digit PIN is a convenience mechanism for a small workplace, **not strong authentication**. The separate manager URL and Home Screen icon do not themselves grant or enforce permission.
 
 ## Deployment
 
-The app is deployed with Netlify.
+Hosted on Netlify, with `npm run build` and `dist` as the publish directory.
 
-Build command:
-
-    npm run build
-
-Publish directory:
-
-    dist
-
-Required Netlify environment variables:
+Required build environment variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
-Every push to the `main` branch triggers a new deployment.
+The `main` branch is used for production deployments. Development changes are tested using a separate `dev` branch, Netlify development site, and Supabase development project before release.
 
 ## Screenshots
 
-- ![login screen](docs/screenshots/ss3.png)
-- ![manager's dashboard](docs/screenshots/ss2.png)
-- ![employee interface](docs/screenshots/ss1.png)
+![Login screen](docs/screenshots/ss3.png)
+
+![Manager dashboard](docs/screenshots/ss2.png)
+
+![Employee interface](docs/screenshots/ss1.png)
 
 ## Roadmap
 
-- Employee management screen
-- PIN reset workflow
-- Payroll-period presets
-- Manager audit history
-- Failed-login throttling
-- Stronger authentication for managers
-- Optional email notifications for employee requests
-- Secure English translation for Spanish employee notes
-- CSV payroll export
+- Employee management and PIN-reset tools.
+- Stronger manager authentication and failed-login throttling.
+- Expanded audit and manager activity history.
+- Automated production backups.
+- Optional secure translation of Spanish employee request notes.
+- Optional notifications for pending correction requests.
+- Additional payroll export formats and presets.
 
 ## Status
 
-Version 3 is deployed and functional.
+**ShiftClock v2 is deployed and functional in production.** The employee and manager interfaces are separately installable, and the manager dashboard includes shift creation/editing, review workflows, provisional payroll calculations, and reporting.
 
-Current production workflows include:
-
-- Employee login
-- Clock in and clock out
-- Spanish and English employee interface
-- Recent shift history
-- Employee correction requests
-- Employee missed shift requests
-- Manager approval and rejection
-- Custom date-range reporting
-- Team and employee hour totals
-- Expandable manager shift details
-- Separate manager-only route
+Offline punching and automatic offline synchronization were explored during development but are **not part of the production app**.
 
 ## Author
 
-Built by Rob Regan.
-
-GitHub: https://github.com/robregan
+Built by Rob Regan. GitHub: https://github.com/robregan
 
 ## License
 
-This project is currently unlicensed and intended for private or internal workplace use.
+Currently unlicensed; intended for private or internal workplace use.
